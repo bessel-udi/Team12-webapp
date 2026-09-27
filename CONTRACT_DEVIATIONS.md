@@ -6,7 +6,7 @@ During Week 5 verification, two implementation bugs were found and fixed to
 match the existing contract — the contract itself was not changed.
 
 1. **Missing route** — `GET /workers/{id}` was not implemented in
-   `server/routes/workers.js` at all (only `GET /workers` existed). We added the
+   `server/routes/workers.js` at all (only `GET /workers` existed). Added the
    handler back, returning the full `WorkerProfile` shape already defined in
    `openapi.yaml` (`id`, `name`, `jobType`, `location`, `rating`,
    `ratePerHour`, `experienceYears`, `reviews`).
@@ -31,3 +31,19 @@ All three GET endpoints (`GET /workers`, `GET /workers/{id}`,
 `GET /bookings/{id}`) were re-verified against `openapi.yaml` after these
 fixes, field by field, in Swagger Editor's preview and via direct browser
 requests. All field names, types, and status codes now match the contract.
+
+## Week 6
+
+No deviations from `openapi.yaml`.
+
+Implemented validation for all write endpoints (`POST /bookings`,
+`PATCH /bookings/{id}`) beyond simple presence checks — added enum
+validation for `jobType` and date-format validation for `scheduledFor`.
+Tested every write endpoint (`POST`, `PATCH`, `DELETE` on `/bookings`) with
+both valid and deliberately invalid input (missing fields, invalid enum
+values, malformed dates, nonexistent ids). All status codes matched the
+contract exactly: 201 on create, 200 on successful reschedule, 204 on
+successful cancel, 400 on validation failure, 404 on operations against a
+nonexistent booking. Confirmed via re-fetch that `DELETE` actually persists
+the `cancelled` status rather than returning a false-success response.
+

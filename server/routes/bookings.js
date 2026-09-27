@@ -2,15 +2,33 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
+const VALID_JOB_TYPES = ['electrician', 'plumber', 'handyman'];
+
 // POST /bookings
 router.post('/', async (req, res) => {
   const { workerId, jobType, location, scheduledFor, requestedBy } = req.body;
+
   if (!workerId || !jobType || !location || !scheduledFor || !requestedBy) {
     return res.status(400).json({
       code: 'INVALID_BOOKING',
       message: 'workerId, jobType, location, scheduledFor, and requestedBy are all required',
     });
   }
+
+  if (!VALID_JOB_TYPES.includes(jobType)) {
+    return res.status(400).json({
+      code: 'INVALID_BOOKING',
+      message: `jobType must be one of: ${VALID_JOB_TYPES.join(', ')}`,
+    });
+  }
+
+  if (isNaN(Date.parse(scheduledFor))) {
+    return res.status(400).json({
+      code: 'INVALID_BOOKING',
+      message: 'scheduledFor must be a valid ISO 8601 date-time',
+    });
+  }
+
   try {
     const id = `bk_${Date.now()}`;
     await db.query(
@@ -51,12 +69,21 @@ router.get('/:id', async (req, res) => {
 // PATCH /bookings/{id} — reschedule
 router.patch('/:id', async (req, res) => {
   const { scheduledFor } = req.body;
+
   if (!scheduledFor) {
     return res.status(400).json({
       code: 'INVALID_RESCHEDULE',
       message: 'scheduledFor is required',
     });
   }
+
+  if (isNaN(Date.parse(scheduledFor))) {
+    return res.status(400).json({
+      code: 'INVALID_RESCHEDULE',
+      message: 'scheduledFor must be a valid ISO 8601 date-time',
+    });
+  }
+
   try {
     const [existing] = await db.query('SELECT status FROM bookings WHERE id = ?', [req.params.id]);
     if (existing.length === 0) {
