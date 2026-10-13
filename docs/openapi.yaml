@@ -1,0 +1,390 @@
+﻿openapi: 3.0.0
+info:
+  title: QuickFundi API
+  version: 1.0.0
+  description: >
+    API exposed by Team 12 (QuickFundi) for Team 13 (HospitalQ) to search
+    fundis, view their profiles, and manage facility-maintenance bookings.
+
+paths:
+  /workers:
+    get:
+      summary: Search worker profiles by job type and location
+      parameters:
+        - name: jobType
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [electrician, plumber, handyman]
+          example: electrician
+        - name: location
+          in: query
+          required: false
+          schema:
+            type: string
+          example: "Nairobi, Upper Hill"
+      responses:
+        '200':
+          description: A list of workers matching the search criteria
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkerSummary'
+              example:
+                - id: "wk_1042"
+                  name: "James Otieno"
+                  jobType: "electrician"
+                  location: "Nairobi, Upper Hill"
+                  rating: 4.8
+                  ratePerHour: 800
+        '400':
+          description: Missing or invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "INVALID_PARAMS"
+                message: "jobType must be one of: electrician, plumber, handyman"
+
+  /workers/{id}:
+    get:
+      summary: Retrieve a single worker's skill profile, rate card, and reviews
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "wk_1042"
+      responses:
+        '200':
+          description: Full worker profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerProfile'
+              example:
+                id: "wk_1042"
+                name: "James Otieno"
+                jobType: "electrician"
+                location: "Nairobi, Upper Hill"
+                experienceYears: 6
+                ratePerHour: 800
+                rating: 4.8
+                reviews:
+                  - author: "Grace M."
+                    comment: "Fixed our wiring fault quickly."
+                    rating: 5
+        '404':
+          description: No worker exists with the given id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "WORKER_NOT_FOUND"
+                message: "No worker found with id wk_1042"
+
+  /bookings:
+    post:
+      summary: Create a booking for a worker to attend a facility-maintenance job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingRequest'
+            example:
+              workerId: "wk_1042"
+              jobType: "electrician"
+              location: "Nairobi Hospital, Ward 4"
+              scheduledFor: "2026-09-15T09:00:00Z"
+              requestedBy: "HospitalQ Facilities Desk"
+      responses:
+        '201':
+          description: Booking created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+              example:
+                id: "bk_5021"
+                workerId: "wk_1042"
+                jobType: "electrician"
+                location: "Nairobi Hospital, Ward 4"
+                scheduledFor: "2026-09-15T09:00:00Z"
+                status: "pending"
+                createdAt: "2026-09-07T08:00:00Z"
+        '400':
+          description: Request body missing required fields or malformed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "INVALID_BOOKING"
+                message: "scheduledFor must be a valid ISO 8601 date-time"
+        '409':
+          description: The requested worker is not available at the requested time
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "WORKER_UNAVAILABLE"
+                message: "Worker wk_1042 already has a booking at this time"
+
+  /bookings/{id}:
+    get:
+      summary: Check the current status of a booking
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "bk_5021"
+      responses:
+        '200':
+          description: Current booking details and status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+              example:
+                id: "bk_5021"
+                workerId: "wk_1042"
+                jobType: "electrician"
+                location: "Nairobi Hospital, Ward 4"
+                scheduledFor: "2026-09-15T09:00:00Z"
+                status: "in_progress"
+                createdAt: "2026-09-07T08:00:00Z"
+        '404':
+          description: No booking exists with the given id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "BOOKING_NOT_FOUND"
+                message: "No booking found with id bk_5021"
+
+    patch:
+      summary: Reschedule an existing booking's date/time
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "bk_5021"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scheduledFor]
+              properties:
+                scheduledFor:
+                  type: string
+                  format: date-time
+                  example: "2026-09-16T09:00:00Z"
+      responses:
+        '200':
+          description: Booking rescheduled successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+              example:
+                id: "bk_5021"
+                workerId: "wk_1042"
+                jobType: "electrician"
+                location: "Nairobi Hospital, Ward 4"
+                scheduledFor: "2026-09-16T09:00:00Z"
+                status: "pending"
+                createdAt: "2026-09-07T08:00:00Z"
+        '400':
+          description: New scheduledFor value missing or malformed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "INVALID_RESCHEDULE"
+                message: "scheduledFor must be a valid date-time"
+        '404':
+          description: No booking exists with the given id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "BOOKING_NOT_FOUND"
+                message: "No booking found with id bk_5021"
+        '409':
+          description: Booking cannot be rescheduled in its current status (e.g. already completed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "BOOKING_NOT_RESCHEDULABLE"
+                message: "Booking bk_5021 is already completed and cannot be rescheduled"
+
+    delete:
+      summary: Cancel an existing booking
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "bk_5021"
+      responses:
+        '204':
+          description: Booking cancelled successfully, no content returned
+        '404':
+          description: No booking exists with the given id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "BOOKING_NOT_FOUND"
+                message: "No booking found with id bk_5021"
+        '409':
+          description: Booking cannot be cancelled in its current status (e.g. already completed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "BOOKING_NOT_CANCELLABLE"
+                message: "Booking bk_5021 is already completed and cannot be cancelled"
+
+components:
+  schemas:
+    WorkerSummary:
+      type: object
+      required: [id, name, jobType, location, rating, ratePerHour]
+      properties:
+        id:
+          type: string
+          example: "wk_1042"
+        name:
+          type: string
+          example: "James Otieno"
+        jobType:
+          type: string
+          enum: [electrician, plumber, handyman]
+          example: "electrician"
+        location:
+          type: string
+          example: "Nairobi, Upper Hill"
+        rating:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 5
+          example: 4.8
+        ratePerHour:
+          type: number
+          format: float
+          example: 800
+
+    WorkerProfile:
+      allOf:
+        - $ref: '#/components/schemas/WorkerSummary'
+        - type: object
+          required: [experienceYears, reviews]
+          properties:
+            experienceYears:
+              type: integer
+              example: 6
+            reviews:
+              type: array
+              items:
+                type: object
+                required: [author, comment, rating]
+                properties:
+                  author:
+                    type: string
+                    example: "Grace M."
+                  comment:
+                    type: string
+                    example: "Fixed our wiring fault quickly."
+                  rating:
+                    type: integer
+                    minimum: 1
+                    maximum: 5
+                    example: 5
+
+    BookingRequest:
+      type: object
+      required: [workerId, jobType, location, scheduledFor, requestedBy]
+      properties:
+        workerId:
+          type: string
+          example: "wk_1042"
+        jobType:
+          type: string
+          enum: [electrician, plumber, handyman]
+          example: "electrician"
+        location:
+          type: string
+          example: "Nairobi Hospital, Ward 4"
+        scheduledFor:
+          type: string
+          format: date-time
+          example: "2026-09-15T09:00:00Z"
+        requestedBy:
+          type: string
+          description: Name or department of the hospital-side requester
+          example: "HospitalQ Facilities Desk"
+
+    Booking:
+      type: object
+      required: [id, workerId, jobType, location, scheduledFor, status, createdAt]
+      properties:
+        id:
+          type: string
+          example: "bk_5021"
+        workerId:
+          type: string
+          example: "wk_1042"
+        jobType:
+          type: string
+          enum: [electrician, plumber, handyman]
+          example: "electrician"
+        location:
+          type: string
+          example: "Nairobi Hospital, Ward 4"
+        scheduledFor:
+          type: string
+          format: date-time
+          example: "2026-09-15T09:00:00Z"
+        status:
+          type: string
+          enum: [pending, in_progress, completed, cancelled]
+          example: "pending"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-09-07T08:00:00Z"
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: "BOOKING_NOT_FOUND"
+        message:
+          type: string
+          example: "No booking found with id bk_5021"

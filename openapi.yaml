@@ -1,4 +1,4 @@
-openapi: 3.0.0
+﻿openapi: 3.0.0
 info:
   title: QuickFundi API
   version: 1.0.0
@@ -13,14 +13,14 @@ paths:
       parameters:
         - name: jobType
           in: query
-          required: true
+          required: false
           schema:
             type: string
             enum: [electrician, plumber, handyman]
           example: electrician
         - name: location
           in: query
-          required: true
+          required: false
           schema:
             type: string
           example: "Nairobi, Upper Hill"
