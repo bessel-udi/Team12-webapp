@@ -4,6 +4,9 @@ const db = require('../db');
 
 const VALID_JOB_TYPES = ['electrician', 'plumber', 'handyman'];
 
+// Converts an ISO date string to MySQL's DATETIME format (UTC), e.g. 2026-11-01 09:00:00
+const toMysqlDate = (iso) => new Date(iso).toISOString().slice(0, 19).replace('T', ' ');
+
 // POST /bookings
 router.post('/', async (req, res) => {
   const { workerId, jobType, location, scheduledFor, requestedBy } = req.body;
@@ -33,7 +36,7 @@ router.post('/', async (req, res) => {
     const id = `bk_${Date.now()}`;
     await db.query(
       'INSERT INTO bookings (id, worker_id, job_type, location, scheduled_for, requested_by) VALUES (?, ?, ?, ?, ?, ?)',
-      [id, workerId, jobType, location, scheduledFor, requestedBy]
+      [id, workerId, jobType, location, toMysqlDate(scheduledFor), requestedBy]
     );
     const [rows] = await db.query(
       'SELECT id, worker_id AS workerId, job_type AS jobType, location, scheduled_for AS scheduledFor, status, created_at AS createdAt FROM bookings WHERE id = ?',
@@ -98,7 +101,7 @@ router.patch('/:id', async (req, res) => {
         message: `Booking ${req.params.id} is already completed and cannot be rescheduled`,
       });
     }
-    await db.query('UPDATE bookings SET scheduled_for = ? WHERE id = ?', [scheduledFor, req.params.id]);
+    await db.query('UPDATE bookings SET scheduled_for = ? WHERE id = ?', [toMysqlDate(scheduledFor), req.params.id]);
     const [rows] = await db.query(
       'SELECT id, worker_id AS workerId, job_type AS jobType, location, scheduled_for AS scheduledFor, status, created_at AS createdAt FROM bookings WHERE id = ?',
       [req.params.id]
