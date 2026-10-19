@@ -6,6 +6,12 @@ info:
     API exposed by Team 12 (QuickFundi) for Team 13 (HospitalQ) to search
     fundis, view their profiles, and manage facility-maintenance bookings.
 
+servers:
+  - url: https://team12-webapp-production.up.railway.app
+    description: Production (Railway)
+  - url: http://localhost:5000
+    description: Local development
+    
 paths:
   /workers:
     get:
