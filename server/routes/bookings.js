@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const crypto = require('crypto');
 
 const VALID_JOB_TYPES = ['electrician', 'plumber', 'handyman'];
 
@@ -18,6 +19,10 @@ router.post('/', async (req, res) => {
     });
   }
 
+  if ([workerId, jobType, location, scheduledFor, requestedBy].some((v) => typeof v !== 'string')) {
+    return res.status(400).json({ code: 'INVALID_BOOKING', message: 'All fields must be strings' });
+  }
+
   if (!VALID_JOB_TYPES.includes(jobType)) {
     return res.status(400).json({
       code: 'INVALID_BOOKING',
@@ -33,7 +38,7 @@ router.post('/', async (req, res) => {
   }
 
   try {
-    const id = `bk_${Date.now()}`;
+    const id = `bk_${crypto.randomBytes(16).toString('hex')}`;
     await db.query(
       'INSERT INTO bookings (id, worker_id, job_type, location, scheduled_for, requested_by) VALUES (?, ?, ?, ?, ?, ?)',
       [id, workerId, jobType, location, toMysqlDate(scheduledFor), requestedBy]

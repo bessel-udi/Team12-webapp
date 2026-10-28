@@ -6,6 +6,10 @@ const db = require('../db');
 router.get('/', async (req, res) => {
   const { jobType, location } = req.query;
 
+if ((jobType && typeof jobType !== 'string') || (location && typeof location !== 'string')) {
+  return res.status(400).json({ code: 'INVALID_QUERY', message: 'jobType and location must be single values' });
+}
+
   let query = 'SELECT id, name, job_type AS jobType, location, rating, rate_per_hour AS ratePerHour FROM workers WHERE 1=1';
   const params = [];
 

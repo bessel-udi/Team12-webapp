@@ -6,12 +6,21 @@ info:
     API exposed by Team 12 (QuickFundi) for Team 13 (HospitalQ) to search
     fundis, view their profiles, and manage facility-maintenance bookings.
 
+
+    Every request must include a valid API key in the `X-API-Key` header.
+    Keys are issued privately, one per consumer. Each key is limited to 100
+    requests per minute; exceeding the limit returns 429 with a `Retry-After`
+    header.
+
 servers:
   - url: https://team12-webapp-production.up.railway.app
     description: Production (Railway)
   - url: http://localhost:5000
     description: Local development
-    
+
+security:
+  - ApiKeyAuth: []
+
 paths:
   /workers:
     get:
@@ -47,14 +56,18 @@ paths:
                   rating: 4.8
                   ratePerHour: 800
         '400':
-          description: Missing or invalid query parameters
+          description: Missing or invalid query parameters (each filter must be a single value)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
               example:
-                code: "INVALID_PARAMS"
-                message: "jobType must be one of: electrician, plumber, handyman"
+                code: "INVALID_QUERY"
+                message: "jobType and location must be single values"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
   /workers/{id}:
     get:
@@ -85,6 +98,8 @@ paths:
                   - author: "Grace M."
                     comment: "Fixed our wiring fault quickly."
                     rating: 5
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           description: No worker exists with the given id
           content:
@@ -94,6 +109,8 @@ paths:
               example:
                 code: "WORKER_NOT_FOUND"
                 message: "No worker found with id wk_1042"
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
   /bookings:
     post:
@@ -118,7 +135,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Booking'
               example:
-                id: "bk_5021"
+                id: "bk_9f2a41c7d3b8e605"
                 workerId: "wk_1042"
                 jobType: "electrician"
                 location: "Nairobi Hospital, Ward 4"
@@ -126,7 +143,7 @@ paths:
                 status: "pending"
                 createdAt: "2026-09-07T08:00:00Z"
         '400':
-          description: Request body missing required fields or malformed
+          description: Request body missing required fields, not valid JSON, or fields not strings
           content:
             application/json:
               schema:
@@ -134,6 +151,8 @@ paths:
               example:
                 code: "INVALID_BOOKING"
                 message: "scheduledFor must be a valid ISO 8601 date-time"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '409':
           description: The requested worker is not available at the requested time
           content:
@@ -143,6 +162,8 @@ paths:
               example:
                 code: "WORKER_UNAVAILABLE"
                 message: "Worker wk_1042 already has a booking at this time"
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
   /bookings/{id}:
     get:
@@ -153,7 +174,7 @@ paths:
           required: true
           schema:
             type: string
-          example: "bk_5021"
+          example: "bk_9f2a41c7d3b8e605"
       responses:
         '200':
           description: Current booking details and status
@@ -162,13 +183,15 @@ paths:
               schema:
                 $ref: '#/components/schemas/Booking'
               example:
-                id: "bk_5021"
+                id: "bk_9f2a41c7d3b8e605"
                 workerId: "wk_1042"
                 jobType: "electrician"
                 location: "Nairobi Hospital, Ward 4"
                 scheduledFor: "2026-09-15T09:00:00Z"
                 status: "in_progress"
                 createdAt: "2026-09-07T08:00:00Z"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           description: No booking exists with the given id
           content:
@@ -177,7 +200,9 @@ paths:
                 $ref: '#/components/schemas/Error'
               example:
                 code: "BOOKING_NOT_FOUND"
-                message: "No booking found with id bk_5021"
+                message: "No booking found with id bk_9f2a41c7d3b8e605"
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
     patch:
       summary: Reschedule an existing booking's date/time
@@ -187,7 +212,7 @@ paths:
           required: true
           schema:
             type: string
-          example: "bk_5021"
+          example: "bk_9f2a41c7d3b8e605"
       requestBody:
         required: true
         content:
@@ -208,7 +233,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Booking'
               example:
-                id: "bk_5021"
+                id: "bk_9f2a41c7d3b8e605"
                 workerId: "wk_1042"
                 jobType: "electrician"
                 location: "Nairobi Hospital, Ward 4"
@@ -216,7 +241,7 @@ paths:
                 status: "pending"
                 createdAt: "2026-09-07T08:00:00Z"
         '400':
-          description: New scheduledFor value missing or malformed
+          description: New scheduledFor value missing or malformed, or body not valid JSON
           content:
             application/json:
               schema:
@@ -224,6 +249,8 @@ paths:
               example:
                 code: "INVALID_RESCHEDULE"
                 message: "scheduledFor must be a valid date-time"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           description: No booking exists with the given id
           content:
@@ -232,7 +259,7 @@ paths:
                 $ref: '#/components/schemas/Error'
               example:
                 code: "BOOKING_NOT_FOUND"
-                message: "No booking found with id bk_5021"
+                message: "No booking found with id bk_9f2a41c7d3b8e605"
         '409':
           description: Booking cannot be rescheduled in its current status (e.g. already completed)
           content:
@@ -241,7 +268,9 @@ paths:
                 $ref: '#/components/schemas/Error'
               example:
                 code: "BOOKING_NOT_RESCHEDULABLE"
-                message: "Booking bk_5021 is already completed and cannot be rescheduled"
+                message: "Booking bk_9f2a41c7d3b8e605 is already completed and cannot be rescheduled"
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
     delete:
       summary: Cancel an existing booking
@@ -251,10 +280,12 @@ paths:
           required: true
           schema:
             type: string
-          example: "bk_5021"
+          example: "bk_9f2a41c7d3b8e605"
       responses:
         '204':
           description: Booking cancelled successfully, no content returned
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           description: No booking exists with the given id
           content:
@@ -263,7 +294,7 @@ paths:
                 $ref: '#/components/schemas/Error'
               example:
                 code: "BOOKING_NOT_FOUND"
-                message: "No booking found with id bk_5021"
+                message: "No booking found with id bk_9f2a41c7d3b8e605"
         '409':
           description: Booking cannot be cancelled in its current status (e.g. already completed)
           content:
@@ -272,9 +303,45 @@ paths:
                 $ref: '#/components/schemas/Error'
               example:
                 code: "BOOKING_NOT_CANCELLABLE"
-                message: "Booking bk_5021 is already completed and cannot be cancelled"
+                message: "Booking bk_9f2a41c7d3b8e605 is already completed and cannot be cancelled"
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
 components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: >
+        API key issued privately to each consumer. Send it in the X-API-Key
+        header on every request.
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid API key
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AuthError'
+          example:
+            message: "Missing or invalid API key"
+    TooManyRequests:
+      description: Rate limit exceeded (100 requests per minute per API key)
+      headers:
+        Retry-After:
+          description: Number of seconds to wait before sending another request
+          schema:
+            type: integer
+            example: 42
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RateLimitError'
+          example:
+            message: "Too many requests"
+            retryAfter: 42
+
   schemas:
     WorkerSummary:
       type: object
@@ -360,7 +427,8 @@ components:
       properties:
         id:
           type: string
-          example: "bk_5021"
+          description: Randomly generated booking id
+          example: "bk_9f2a41c7d3b8e605"
         workerId:
           type: string
           example: "wk_1042"
@@ -393,4 +461,24 @@ components:
           example: "BOOKING_NOT_FOUND"
         message:
           type: string
-          example: "No booking found with id bk_5021"
+          example: "No booking found with id bk_9f2a41c7d3b8e605"
+
+    AuthError:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          example: "Missing or invalid API key"
+
+    RateLimitError:
+      type: object
+      required: [message, retryAfter]
+      properties:
+        message:
+          type: string
+          example: "Too many requests"
+        retryAfter:
+          type: integer
+          description: Seconds until the rate-limit window resets
+          example: 42
