@@ -24,12 +24,12 @@ npm install
 npm start
 ```
 
-By default, the API listens at `http://localhost:5000`.
+By default, the API listens at `https://team12-webapp-production.up.railway.app`.
 
 Health check (requires an API key, see [Authentication](#authentication)):
 
 ```bash
-curl.exe -i -H "X-API-Key: <your-api-key>" http://localhost:5000/
+curl.exe -i -H "X-API-Key: <your-api-key>" https://team12-webapp-production.up.railway.app/
 ```
 
 Expected response: HTTP 200 and `QuickFundi API is running`.
@@ -63,7 +63,7 @@ The backend expects these tables and columns:
 Every endpoint, including the health check, requires a valid API key. Send it in the `X-API-Key` header on every request:
 
 ```bash
-curl.exe -i -H "X-API-Key: <your-api-key>" http://localhost:5000/workers
+curl.exe -i -H "X-API-Key: <your-api-key>" https://team12-webapp-production.up.railway.app/workers
 ```
 
 Keys are issued privately, one per consumer, so a single key can be revoked without affecting anyone else. Never commit a key or share it in a public channel. In examples, `<your-api-key>` is a placeholder; replace it with your own key.
@@ -99,7 +99,7 @@ Wait `retryAfter` seconds before sending more requests. The limit is counted in 
 
 ## Base URL
 
-`http://localhost:5000`
+`https://team12-webapp-production.up.railway.app`
 
 ## Endpoints
 
@@ -118,7 +118,7 @@ All endpoints require the `X-API-Key` header.
 ### 1. Search workers
 
 ```bash
-curl.exe -i -H "X-API-Key: <your-api-key>" "http://localhost:5000/workers?jobType=electrician&location=Upper%20Hill"
+curl.exe -i -H "X-API-Key: <your-api-key>" "https://team12-webapp-production.up.railway.app/workers?jobType=electrician&location=Upper%20Hill"
 ```
 
 Both `jobType` and `location` are optional filters, and each must be a single value. Valid job types used by the booking route are `electrician`, `plumber`, and `handyman`.
@@ -128,7 +128,7 @@ A successful response is a JSON array of worker summaries, with fields such as `
 ### 2. Retrieve a worker profile
 
 ```bash
-curl.exe -i -H "X-API-Key: <your-api-key>" "http://localhost:5000/workers/wk_1042"
+curl.exe -i -H "X-API-Key: <your-api-key>" "https://team12-webapp-production.up.railway.app/workers/wk_1042"
 ```
 
 A successful response includes worker details, `experienceYears`, and a `reviews` array. If the worker does not exist, the route returns HTTP 404 with a `WORKER_NOT_FOUND` error.
@@ -138,7 +138,7 @@ Replace `wk_1042` with an ID that exists in your database.
 ### 3. Create a booking
 
 ```bash
-curl.exe -i -X POST "http://localhost:5000/bookings" -H "X-API-Key: <your-api-key>" -H "Content-Type: application/json" -d "{\"workerId\":\"wk_1042\",\"jobType\":\"electrician\",\"location\":\"Nairobi Hospital, Ward 4\",\"scheduledFor\":\"2026-11-15T09:00:00Z\",\"requestedBy\":\"HospitalQ Facilities Desk\"}"
+curl.exe -i -X POST "https://team12-webapp-production.up.railway.app/bookings" -H "X-API-Key: <your-api-key>" -H "Content-Type: application/json" -d "{\"workerId\":\"wk_1042\",\"jobType\":\"electrician\",\"location\":\"Nairobi Hospital, Ward 4\",\"scheduledFor\":\"2026-11-15T09:00:00Z\",\"requestedBy\":\"HospitalQ Facilities Desk\"}"
 ```
 
 Required JSON fields, all of which must be strings:
@@ -154,7 +154,7 @@ A successful request returns HTTP 201 and the created booking details, including
 ### 4. Check a booking
 
 ```bash
-curl.exe -i -H "X-API-Key: <your-api-key>" "http://localhost:5000/bookings/bk_9f2a41c7d3b8e605"
+curl.exe -i -H "X-API-Key: <your-api-key>" "https://team12-webapp-production.up.railway.app/bookings/bk_9f2a41c7d3b8e605"
 ```
 
 Replace `bk_9f2a41c7d3b8e605` with the ID returned when you create a booking. A successful response returns the booking details and status.
@@ -162,7 +162,7 @@ Replace `bk_9f2a41c7d3b8e605` with the ID returned when you create a booking. A 
 ### 5. Reschedule a booking
 
 ```bash
-curl.exe -i -X PATCH "http://localhost:5000/bookings/bk_9f2a41c7d3b8e605" -H "X-API-Key: <your-api-key>" -H "Content-Type: application/json" -d "{\"scheduledFor\":\"2026-11-16T09:00:00Z\"}"
+curl.exe -i -X PATCH "https://team12-webapp-production.up.railway.app/bookings/bk_9f2a41c7d3b8e605" -H "X-API-Key: <your-api-key>" -H "Content-Type: application/json" -d "{\"scheduledFor\":\"2026-11-16T09:00:00Z\"}"
 ```
 
 The request body must contain a valid `scheduledFor` date/time. A successful request returns HTTP 200 and the updated booking. A missing or invalid date returns HTTP 400; a missing booking returns HTTP 404; a completed booking returns HTTP 409.
@@ -170,7 +170,7 @@ The request body must contain a valid `scheduledFor` date/time. A successful req
 ### 6. Cancel a booking
 
 ```bash
-curl.exe -i -X DELETE "http://localhost:5000/bookings/bk_9f2a41c7d3b8e605" -H "X-API-Key: <your-api-key>"
+curl.exe -i -X DELETE "https://team12-webapp-production.up.railway.app/bookings/bk_9f2a41c7d3b8e605" -H "X-API-Key: <your-api-key>"
 ```
 
 A successful cancellation returns HTTP 204 with no response body. A missing booking returns HTTP 404. A completed booking returns HTTP 409.
