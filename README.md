@@ -12,7 +12,7 @@ To view Swagger UI locally, start a local static web server from the repository 
 
 - Node.js and npm
 - MySQL server
-- A configured database containing the tables required by the API
+- A configured database containing the tables required by the API (see [Database setup](#database-setup))
 
 ## Run the API
 
@@ -24,17 +24,17 @@ npm install
 npm start
 ```
 
-By default, the API listens at `https://team12-webapp-production.up.railway.app`.
+Locally the API listens on `http://localhost:5000` (the `PORT` value in `server/.env`). The deployed API is at `https://team12-webapp-production.up.railway.app`.
 
 Health check (requires an API key, see [Authentication](#authentication)):
 
 ```bash
-curl.exe -i -H "X-API-Key: <your-api-key>" https://team12-webapp-production.up.railway.app/
+curl.exe -i -H "X-API-Key: <your-api-key>" http://localhost:5000/
 ```
 
 Expected response: HTTP 200 and `QuickFundi API is running`.
 
-## Database configuration
+## Environment configuration
 
 The backend reads these variables from `server/.env`:
 
@@ -46,9 +46,18 @@ DB_NAME=your_database_name
 DB_PORT=3306
 PORT=5000
 API_KEYS=replace-with-partner-key,replace-with-team-key
+FRONTEND_ORIGINS=http://localhost:5173
+PARTNER_URL=http://localhost:4000
+PARTNER_API_KEY=replace-with-the-key-your-partner-gave-you
 ```
 
-Replace the example values with your local MySQL settings and your own generated API keys. See `server/.env.example` for a template. Do not commit real passwords, API keys, or other secrets: `.env` is listed in `.gitignore`.
+- `API_KEYS`: keys that consumers of this API must send (see [Authentication](#authentication)).
+- `FRONTEND_ORIGINS`: comma-separated list of website origins allowed to call the internal inventory route from a browser (see [Internal route](#internal-route-provider-inventory-no-api-key)).
+- `PARTNER_URL` and `PARTNER_API_KEY`: the address and key for our upstream partner, LiteStock. For local testing they can point at the stand-in server in `server/mock-partner.js`.
+
+Replace the example values with your own settings. See `server/.env.example` for a template. Do not commit real passwords, API keys, or other secrets: `.env` is listed in `.gitignore`.
+
+## Database setup
 
 The backend expects these tables and columns:
 
@@ -56,11 +65,19 @@ The backend expects these tables and columns:
 - `reviews`: `worker_id`, `author`, `comment`, `rating`
 - `bookings`: `id`, `worker_id`, `job_type`, `location`, `scheduled_for`, `requested_by`, `status`, `created_at`
 
-**Database setup note:** A SQL schema/seed file is not currently included in this repository. A working database with the required tables and compatible columns must be prepared before database-backed endpoints can be used.
+The repository includes `schema.sql` (creates the tables and 3 sample workers with reviews) and `seed.sql` (adds 5 more workers, 8 reviews and 6 bookings). On a fresh database:
+
+```bash
+mysql -u root -p -e "CREATE DATABASE your_database_name;"
+mysql -u root -p your_database_name < schema.sql
+mysql -u root -p your_database_name < seed.sql
+```
+
+Run each file once. Running them again adds the reviews a second time, and `schema.sql` fails on its duplicate worker ids.
 
 ## Authentication
 
-Every endpoint, including the health check, requires a valid API key. Send it in the `X-API-Key` header on every request:
+Every endpoint requires a valid API key, with one exception: the internal inventory route described [below](#internal-route-provider-inventory-no-api-key). Send the key in the `X-API-Key` header on every request:
 
 ```bash
 curl.exe -i -H "X-API-Key: <your-api-key>" https://team12-webapp-production.up.railway.app/workers
@@ -97,13 +114,39 @@ Each API key may make **100 requests per minute**. Going over the limit returns 
 
 Wait `retryAfter` seconds before sending more requests. The limit is counted in server memory, so it resets if the server restarts.
 
+## Internal route: provider inventory (no API key)
+
+`GET /provider-inventory/{providerId}` is used by QuickFundi's own website to show the materials a provider has in stock, taken from our upstream partner LiteStock. It is internal: it is not part of the contract for API consumers such as HospitalQ and is not listed in `openapi.yaml`.
+
+It is deliberately open without an API key so that our partner's key never reaches the browser. The website calls this route, and our server adds the partner key when it calls LiteStock. To limit the risk of leaving it open:
+
+- **Rate limit:** 30 requests per minute per IP address (429 with a `Retry-After` header when exceeded).
+- **CORS:** browsers only allow the origins listed in `FRONTEND_ORIGINS`.
+- **Validation:** `providerId` must be a positive whole number, otherwise 400.
+- **Minimal output:** only `name`, `quantity`, `unit` and `status` are returned for each item.
+
+```bash
+curl.exe -i http://localhost:5000/provider-inventory/15
+```
+
+Example response:
+
+```json
+[
+  { "name": "PVC Pipe", "quantity": 25, "unit": "pieces", "status": "in_stock" },
+  { "name": "Pipe Sealant", "quantity": 0, "unit": "tubes", "status": "out_of_stock" }
+]
+```
+
+Errors: `400` invalid provider ID, `404` provider not found in LiteStock, `429` rate limit exceeded, `502` the partner's API is unavailable or returned an unexpected response.
+
 ## Base URL
 
 `https://team12-webapp-production.up.railway.app`
 
 ## Endpoints
 
-All endpoints require the `X-API-Key` header.
+All endpoints require the `X-API-Key` header, except the internal inventory route.
 
 | Method | Endpoint | Purpose |
 |---|---|---|
@@ -114,6 +157,7 @@ All endpoints require the `X-API-Key` header.
 | GET | `/bookings/{id}` | Retrieve booking details and status |
 | PATCH | `/bookings/{id}` | Reschedule a booking |
 | DELETE | `/bookings/{id}` | Cancel a booking |
+| GET | `/provider-inventory/{providerId}` | Materials in stock for a provider (internal, no key) |
 
 ### 1. Search workers
 
@@ -188,7 +232,7 @@ Errors returned by the routes use a JSON object with `code` and `message` fields
 }
 ```
 
-Authentication and rate-limit errors (401 and 429) use a `message` field only, as shown in the sections above.
+Authentication, rate-limit and internal-route errors (401, 429 and the inventory route's errors) use a `message` field only, as shown in the sections above.
 
 Common status codes:
 
@@ -199,14 +243,16 @@ Common status codes:
 - `401 Unauthorized`: missing or invalid API key
 - `404 Not Found`: worker, booking, or route does not exist
 - `409 Conflict`: operation is not allowed for a completed booking
-- `429 Too Many Requests`: rate limit of 100 requests per minute exceeded
+- `429 Too Many Requests`: rate limit exceeded (100 per minute per key, or 30 per minute per IP on the inventory route)
 - `500 Internal Server Error`: database or server-side operation failed
+- `502 Bad Gateway`: the partner's API (LiteStock) is unavailable (inventory route only)
 
 ## Notes for testing
 
 - Start the API before running the curl commands.
-- Include a valid `X-API-Key` header on every request, or you will get 401.
+- Include a valid `X-API-Key` header on every request except the inventory route, or you will get 401.
 - Ensure MySQL is running and the database is configured before testing database-backed endpoints.
-- Use IDs that exist in your database; example IDs in this README are placeholders unless they have been seeded locally.
+- Use IDs that exist in your database; example IDs in this README are placeholders unless they have been seeded.
 - The health-check endpoint does not require a database query, so it can help confirm that the server has started and that your key works.
+- To test the inventory route without the real partner, run the stand-in with `node server/mock-partner.js` and use `PARTNER_URL=http://localhost:4000` and `PARTNER_API_KEY=test-key`.
 - To run the automated tests: `cd server && npm test` (the database must be reachable).
