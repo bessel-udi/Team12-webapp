@@ -42,6 +42,53 @@ function rateLimit({ windowMs, max }) {
 
 app.use(cors());
 app.use(express.json());
+
+const PARTNER_URL = process.env.PARTNER_URL;     // set in .env, never hardcoded
+const PARTNER_KEY = process.env.PARTNER_API_KEY; // never hardcode, never log
+const HEADER_NAME = 'X-API-Key';                 // change to the header name in their README
+
+app.get('/provider-inventory/:id', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id < 1) {
+    return res.status(400).json({ message: 'Invalid provider ID' });
+  }
+
+  try {
+    const r = await fetch(`${PARTNER_URL}/api/inventory?provider_id=${id}`, {
+      headers: { [HEADER_NAME]: PARTNER_KEY },
+    });
+
+    if (r.status === 404) {
+      return res.status(404).json({ message: 'Provider not found in LiteStock' });
+    }
+    if (!r.ok) {
+      console.error('partner returned', r.status); // log the status, never the key
+      return res.status(502).json({ message: 'Partner data unavailable' });
+    }
+
+    const data = await r.json();
+
+    // Shape check: a renamed field would otherwise silently come back empty
+    if (!Array.isArray(data.inventory)) {
+      console.error('unexpected partner response shape, keys:', Object.keys(data));
+      return res.status(502).json({ message: 'Partner data unavailable' });
+    }
+
+    res.json(
+      data.inventory.map((i) => ({
+        name: i.name,
+        quantity: i.quantity,
+        unit: i.unit,
+        status: i.status,
+      }))
+    );
+  } catch (err) {
+    // ECONNREFUSED = nothing listening; ENOTFOUND = wrong hostname
+    console.error('partner call failed:', err.cause?.code || err.message);
+    res.status(502).json({ message: 'Partner data unavailable' });
+  }
+});
+
 app.use(requireApiKey); // Apply API key middleware to all routes
 app.use(rateLimit({ windowMs: 60000, max: 100 }));
 
