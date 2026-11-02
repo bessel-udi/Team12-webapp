@@ -1,31 +1,67 @@
+
 import { useEffect, useState } from 'react';
 
-// Your own server, not the partner. The partner's key never reaches this file.
+// Your own server, not the partner.
+// The partner's API key never reaches this file.
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 function ProviderInventory({ providerId }) {
-  const [state, setState] = useState({ status: 'loading', items: [] });
+  const [state, setState] = useState({
+    status: 'loading',
+    items: [],
+    stale: false,
+  });
 
   useEffect(() => {
     const controller = new AbortController();
-    setState({ status: 'loading', items: [] });
 
-    fetch(`${API_URL}/provider-inventory/${providerId}`, { signal: controller.signal })
+    setState({
+      status: 'loading',
+      items: [],
+      stale: false,
+    });
+
+    fetch(`${API_URL}/provider-inventory/${providerId}`, {
+      signal: controller.signal,
+    })
       .then(async (res) => {
         if (res.status === 404) {
-          setState({ status: 'notfound', items: [] });
+          setState({
+            status: 'notfound',
+            items: [],
+            stale: false,
+          });
           return;
         }
+
         if (!res.ok) {
-          setState({ status: 'error', items: [] });
+          setState({
+            status: 'error',
+            items: [],
+            stale: false,
+          });
           return;
         }
-        const items = await res.json();
-        setState({ status: 'ok', items });
+
+        const result = await res.json();
+
+        if (!Array.isArray(result.data)) {
+          throw new Error('Invalid inventory response');
+        }
+
+        setState({
+          status: 'ok',
+          items: result.data,
+          stale: result.stale === true,
+        });
       })
       .catch((err) => {
         if (err.name !== 'AbortError') {
-          setState({ status: 'error', items: [] });
+          setState({
+            status: 'error',
+            items: [],
+            stale: false,
+          });
         }
       });
 
@@ -48,7 +84,9 @@ function ProviderInventory({ providerId }) {
       </h3>
 
       {state.status === 'loading' && (
-        <p style={{ color: 'var(--text)' }}>Loading inventory...</p>
+        <p style={{ color: 'var(--text)' }}>
+          Loading inventory...
+        </p>
       )}
 
       {state.status === 'error' && (
@@ -58,39 +96,70 @@ function ProviderInventory({ providerId }) {
       )}
 
       {state.status === 'notfound' && (
-        <p style={{ color: 'var(--text)' }}>No inventory found for this provider.</p>
+        <p style={{ color: 'var(--text)' }}>
+          No inventory found for this provider.
+        </p>
       )}
 
-      {state.status === 'ok' && state.items.length === 0 && (
-        <p style={{ color: 'var(--text)' }}>No items listed yet.</p>
-      )}
+      {state.status === 'ok' && (
+        <>
+          {state.stale && (
+            <p style={{ color: '#b45309', fontSize: '13px' }}>
+              Showing previously saved inventory. Live data is temporarily unavailable.
+            </p>
+          )}
 
-      {state.status === 'ok' && state.items.length > 0 && (
-        <ul style={{ listStyle: 'none' }}>
-          {state.items.map((item) => (
-            <li
-              key={item.name}
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                padding: '0.5rem 0',
-                borderBottom: '1px solid var(--border)',
-                color: 'var(--text)',
-              }}
-            >
-              <span>
-                {item.name} ({item.quantity} {item.unit})
-              </span>
-              <strong
-                style={{
-                  color: item.status === 'in_stock' ? '#166534' : 'var(--primary)',
-                }}
-              >
-                {item.status === 'in_stock' ? 'In stock' : 'Out of stock'}
-              </strong>
-            </li>
-          ))}
-        </ul>
+          {state.items.length === 0 && (
+            <p style={{ color: 'var(--text)' }}>
+              No items listed yet.
+            </p>
+          )}
+
+          {state.items.length > 0 && (
+            <ul style={{ listStyle: 'none', padding: 0 }}>
+              {state.items.map((item) => (
+                <li
+                  key={item.product_id}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: '12px',
+                    padding: '0.75rem 0',
+                    borderBottom: '1px solid var(--border)',
+                    color: 'var(--text)',
+                  }}
+                >
+                  <span>
+                    <strong>{item.name}</strong>
+                    <br />
+                    <small>
+                      {item.category} · Quantity: {item.quantity}
+                    </small>
+                  </span>
+
+                  <strong
+                    style={{
+                      color:
+                        item.status === 'in_stock'
+                          ? '#166534'
+                          : item.status === 'low_stock'
+                          ? '#b45309'
+                          : 'var(--primary)',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {item.status === 'in_stock'
+                      ? 'In stock'
+                      : item.status === 'low_stock'
+                      ? 'Low stock'
+                      : 'Out of stock'}
+                  </strong>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
     </section>
   );
