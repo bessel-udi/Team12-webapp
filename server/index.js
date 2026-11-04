@@ -1,4 +1,3 @@
-
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
@@ -61,6 +60,7 @@ app.use(express.json());
 
 // ---------- Partner configuration ----------
 const PARTNER_URL = process.env.PARTNER_URL;
+const PARTNER_KEY = process.env.PARTNER_API_KEY; // never hardcode, never log
 const lastGood = new Map();
 
 // Origins allowed to call the open inventory route
@@ -92,9 +92,9 @@ app.get(
     try {
       const r = await fetchWithRetry(
         `${PARTNER_URL}/api/inventory`,
-        {},
+        { headers: { 'X-API-Key': PARTNER_KEY } },
         {
-          timeoutMs: 1500,
+          timeoutMs: 5000,
           retries: 2,
           delayMs: 200,
         }
@@ -113,13 +113,19 @@ app.get(
 
       const data = await r.json();
 
-      if (!Array.isArray(data.inventory)) {
-        console.error(
-          'Unexpected partner response shape, keys:',
-          Object.keys(data)
+      // Shape check: a renamed or missing field becomes a 502, not silent blanks
+      const valid =
+        Array.isArray(data.inventory) &&
+        data.inventory.every(
+          (i) =>
+            typeof i.name === 'string' &&
+            Number.isFinite(i.stock_quantity) &&
+            typeof i.status === 'string'
         );
 
-        throw new Error('Invalid partner response format');
+      if (!valid) {
+        console.error('unexpected partner response shape, keys:', Object.keys(data));
+        return res.status(502).json({ message: 'Partner data unavailable' });
       }
 
       // Map Team 11's actual JSON fields
@@ -216,7 +222,11 @@ app.use((err, req, res, next) => {
 });
 
 if (require.main === module) {
-  app.listen(PORT, () => {
+  app.listen(PORT, (err) => {
+    if (err) {
+      console.error('Could not start server:', err.code || err.message);
+      process.exit(1);
+    }
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }
