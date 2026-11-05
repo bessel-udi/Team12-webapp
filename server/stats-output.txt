@@ -1,0 +1,53 @@
+﻿{
+    "startedAt":  "2026-11-05T00:24:24.028Z",
+    "uptimeSeconds":  1598,
+    "total":  262,
+    "clientErrors":  110,
+    "serverErrors":  98,
+    "errorRatePercent":  37.4,
+    "avgMs":  162,
+    "routes":  {
+                   "GET (no route)":  {
+                                          "count":  110,
+                                          "clientErrors":  110,
+                                          "serverErrors":  0,
+                                          "avgMs":  0.6,
+                                          "maxMs":  4.3
+                                      },
+                   "GET /workers/":  {
+                                         "count":  66,
+                                         "clientErrors":  0,
+                                         "serverErrors":  66,
+                                         "avgMs":  4.4,
+                                         "maxMs":  37.7
+                                     },
+                   "GET /workers/:id":  {
+                                            "count":  31,
+                                            "clientErrors":  0,
+                                            "serverErrors":  31,
+                                            "avgMs":  3,
+                                            "maxMs":  6.1
+                                        },
+                   "GET /":  {
+                                 "count":  25,
+                                 "clientErrors":  0,
+                                 "serverErrors":  0,
+                                 "avgMs":  0.6,
+                                 "maxMs":  1.1
+                             },
+                   "GET /provider-inventory/:id":  {
+                                                       "count":  29,
+                                                       "clientErrors":  0,
+                                                       "serverErrors":  1,
+                                                       "avgMs":  1447.6,
+                                                       "maxMs":  15646.8
+                                                   },
+                   "GET /stats":  {
+                                      "count":  1,
+                                      "clientErrors":  0,
+                                      "serverErrors":  0,
+                                      "avgMs":  0.9,
+                                      "maxMs":  0.9
+                                  }
+               }
+}

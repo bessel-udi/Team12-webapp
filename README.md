@@ -256,3 +256,31 @@ Common status codes:
 - The health-check endpoint does not require a database query, so it can help confirm that the server has started and that your key works.
 - To test the inventory route without the real partner, run the stand-in with `node server/mock-partner.js` and use `PARTNER_URL=http://localhost:4000` and `PARTNER_API_KEY=test-key`.
 - To run the automated tests: `cd server && npm test` (the database must be reachable).
+
+
+## Monitoring: `GET /stats`
+
+Returns running totals since the server started. It needs an API key, like every other endpoint.
+
+```
+curl -s -H "X-API-Key: <your-api-key>" http://localhost:5000/stats
+```
+
+Example response (trimmed):
+
+```json
+{
+  "uptimeSeconds": 485,
+  "total": 260,
+  "clientErrors": 109,
+  "serverErrors": 98,
+  "errorRatePercent": 37.7,
+  "avgMs": 163.2,
+  "routes": {
+    "GET /provider-inventory/:id": { "count": 29, "clientErrors": 0, "serverErrors": 1, "avgMs": 1447.6, "maxMs": 15646.8 }
+  }
+}
+```
+
+The numbers live in memory and reset when the server restarts. `errorRatePercent` counts 5xx errors only. The `(no route)` row holds requests rejected before reaching a route (401, 429, and 404 for unknown paths).
+
