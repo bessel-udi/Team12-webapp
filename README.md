@@ -47,13 +47,13 @@ DB_PORT=3306
 PORT=5000
 API_KEYS=replace-with-partner-key,replace-with-team-key
 FRONTEND_ORIGINS=http://localhost:5173
-PARTNER_URL=http://localhost:4000
+PARTNER_URL=https://quickfundi-litestock-api.onrender.com
 PARTNER_API_KEY=replace-with-the-key-your-partner-gave-you
 ```
 
 - `API_KEYS`: keys that consumers of this API must send (see [Authentication](#authentication)).
 - `FRONTEND_ORIGINS`: comma-separated list of website origins allowed to call the internal inventory route from a browser (see [Internal route](#internal-route-provider-inventory-no-api-key)).
-- `PARTNER_URL` and `PARTNER_API_KEY`: the address and key for our upstream partner, LiteStock. For local testing they can point at the stand-in server in `server/mock-partner.js`.
+- `PARTNER_URL` and `PARTNER_API_KEY`: the address and key for our upstream partner, LiteStock (`https://quickfundi-litestock-api.onrender.com`). The key is the one LiteStock issued to us. On the deployed server these are set as Railway variables.
 
 Replace the example values with your own settings. See `server/.env.example` for a template. Do not commit real passwords, API keys, or other secrets: `.env` is listed in `.gitignore`.
 
@@ -123,22 +123,31 @@ It is deliberately open without an API key so that our partner's key never reach
 - **Rate limit:** 30 requests per minute per IP address (429 with a `Retry-After` header when exceeded).
 - **CORS:** browsers only allow the origins listed in `FRONTEND_ORIGINS`.
 - **Validation:** `providerId` must be a positive whole number, otherwise 400.
-- **Minimal output:** only `name`, `quantity`, `unit` and `status` are returned for each item.
+- **Minimal output:** only `product_id`, `name`, `category`, `quantity` and `status` are returned for each item. The partner's response is checked before it is passed on, and `stock_quantity` is mapped to `quantity`.
+- **Resilience:** each call to LiteStock has a 5 second timeout and up to 3 attempts. If every attempt fails, the last successful response for that provider is returned with `"stale": true`. If none exists yet, the route returns 502.
 
 ```bash
 curl.exe -i http://localhost:5000/provider-inventory/15
 ```
 
-Example response:
+Example response (trimmed to two items):
 
 ```json
-[
-  { "name": "PVC Pipe", "quantity": 25, "unit": "pieces", "status": "in_stock" },
-  { "name": "Pipe Sealant", "quantity": 0, "unit": "tubes", "status": "out_of_stock" }
-]
+{
+  "data": [
+    { "product_id": 20, "name": "Beans (per Kg)", "category": "Grains", "quantity": 83, "status": "in_stock" },
+    { "product_id": 18, "name": "Laptop", "category": "Electronics", "quantity": 9, "status": "low_stock" }
+  ],
+  "stale": false,
+  "asOf": "2026-11-05T12:35:25.803Z"
+}
 ```
 
-Errors: `400` invalid provider ID, `404` provider not found in LiteStock, `429` rate limit exceeded, `502` the partner's API is unavailable or returned an unexpected response.
+- `data`: the inventory items.
+- `stale`: `false` for fresh data from LiteStock, `true` when LiteStock could not be reached and the last successful copy is returned.
+- `asOf`: when that data was fetched from LiteStock.
+
+Errors: `400` invalid provider ID, `404` provider not found in LiteStock, `429` rate limit exceeded, `502` LiteStock is unavailable (or returned an unexpected response) and no earlier copy exists. LiteStock runs on a free hosting plan that sleeps when idle, so the first request after a quiet period can fail with 502; the next request normally succeeds.
 
 ## Base URL
 
@@ -245,7 +254,7 @@ Common status codes:
 - `409 Conflict`: operation is not allowed for a completed booking
 - `429 Too Many Requests`: rate limit exceeded (100 per minute per key, or 30 per minute per IP on the inventory route)
 - `500 Internal Server Error`: database or server-side operation failed
-- `502 Bad Gateway`: the partner's API (LiteStock) is unavailable (inventory route only)
+- `502 Bad Gateway`: the partner's API (LiteStock) is unavailable and no earlier copy of its data exists (inventory route only)
 
 ## Notes for testing
 
@@ -254,7 +263,8 @@ Common status codes:
 - Ensure MySQL is running and the database is configured before testing database-backed endpoints.
 - Use IDs that exist in your database; example IDs in this README are placeholders unless they have been seeded.
 - The health-check endpoint does not require a database query, so it can help confirm that the server has started and that your key works.
-- To test the inventory route without the real partner, run the stand-in with `node server/mock-partner.js` and use `PARTNER_URL=http://localhost:4000` and `PARTNER_API_KEY=test-key`.
+- To test the inventory route, set `PARTNER_URL` and `PARTNER_API_KEY` to the real LiteStock values. Their service may take up to a minute to wake up if it has been idle, so call it once before a demo.
+- The stand-in in `server/mock-partner.js` can be used when LiteStock is down, but it must return the same shape as the real API: an `inventory` array whose items have `name`, `category`, `stock_quantity` and `status`.
 - To run the automated tests: `cd server && npm test` (the database must be reachable).
 
 
@@ -283,4 +293,3 @@ Example response (trimmed):
 ```
 
 The numbers live in memory and reset when the server restarts. `errorRatePercent` counts 5xx errors only. The `(no route)` row holds requests rejected before reaching a route (401, 429, and 404 for unknown paths).
-
