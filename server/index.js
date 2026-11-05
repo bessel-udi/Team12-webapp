@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const { monitor, statsHandler } = require('./monitoring');
 require('dotenv').config();
 
 const { fetchWithRetry } = require('./resilientFetch');
@@ -56,6 +57,7 @@ function rateLimit({ windowMs, max }) {
   };
 }
 
+app.use(monitor); // FIRST, so rejected requests are logged too
 app.use(express.json());
 
 // ---------- Partner configuration ----------
@@ -185,6 +187,8 @@ app.use(rateLimit({
   windowMs: 60000,
   max: 100,
 }));
+
+app.get('/stats', statsHandler);
 
 // ---------- Root ----------
 app.get('/', (req, res) => {
