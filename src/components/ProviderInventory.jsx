@@ -15,12 +15,6 @@ function ProviderInventory({ providerId }) {
   useEffect(() => {
     const controller = new AbortController();
 
-    setState({
-      status: 'loading',
-      items: [],
-      stale: false,
-    });
-
     fetch(`${API_URL}/provider-inventory/${providerId}`, {
       signal: controller.signal,
     })
