@@ -3,7 +3,8 @@ const cors = require('cors');
 const { monitor, statsHandler } = require('./monitoring');
 require('dotenv').config();
 
-const { fetchWithRetry } = require('./resilientFetch');
+const { getInventory, ensureTables } = require('./inventoryService');
+const materialsRoutes = require('./routes/materials');
 
 const app = express();
 app.disable('x-powered-by');
@@ -60,19 +61,14 @@ function rateLimit({ windowMs, max }) {
 app.use(monitor); // FIRST, so rejected requests are logged too
 app.use(express.json());
 
-// ---------- Partner configuration ----------
-const PARTNER_URL = process.env.PARTNER_URL;
-const PARTNER_KEY = process.env.PARTNER_API_KEY; // never hardcode, never log
-const lastGood = new Map();
-
-// Origins allowed to call the open inventory route
+// Origins allowed to call the inventory routes from a browser
 const FRONTEND_ORIGINS = (
   process.env.FRONTEND_ORIGINS || 'http://localhost:5173'
 )
   .split(',')
   .filter(Boolean);
 
-// ---------- Public provider inventory route ----------
+// ---------- Public, read-only provider inventory ----------
 const inventoryLimiter = rateLimit({
   windowMs: 60000,
   max: 30,
@@ -92,91 +88,28 @@ app.get(
     }
 
     try {
-      const r = await fetchWithRetry(
-        `${PARTNER_URL}/api/inventory`,
-        { headers: { 'X-API-Key': PARTNER_KEY } },
-        {
-          timeoutMs: 5000,
-          retries: 2,
-          delayMs: 200,
-        }
-      );
-
-      if (r.status === 404) {
-        return res.status(404).json({
-          message: 'Provider not found in LiteStock',
-        });
-      }
-
-      if (!r.ok) {
-        console.error('Partner returned:', r.status);
-        throw new Error(`Partner returned ${r.status}`);
-      }
-
-      const data = await r.json();
-
-      // Shape check: a renamed or missing field becomes a 502, not silent blanks
-      const valid =
-        Array.isArray(data.inventory) &&
-        data.inventory.every(
-          (i) =>
-            typeof i.name === 'string' &&
-            Number.isFinite(i.stock_quantity) &&
-            typeof i.status === 'string'
-        );
-
-      if (!valid) {
-        console.error('unexpected partner response shape, keys:', Object.keys(data));
-        return res.status(502).json({ message: 'Partner data unavailable' });
-      }
-
-      // Map Team 11's actual JSON fields
-      const inventory = data.inventory.map((i) => ({
-        product_id: i.product_id,
-        name: i.name,
-        category: i.category,
-        quantity: i.stock_quantity,
-        status: i.status,
-      }));
-
-      // Save the latest successful response
-      const asOf = new Date().toISOString();
-
-      lastGood.set(id, {
-        data: inventory,
-        asOf,
-      });
-
-      // Return fresh inventory
-      return res.json({
-        data: inventory,
-        stale: false,
-        asOf,
-      });
-
+      // Partner stock minus what our fundis have taken (see inventoryService.js)
+      res.json(await getInventory());
     } catch (err) {
-      const reason = err.name === 'TimeoutError'
-        ? 'timeout'
-        : (err.cause?.code || err.message);
-
-      console.error('Partner call failed:', reason);
-
-      // Try the last successful response
-      const cached = lastGood.get(id);
-
-      if (cached) {
-        return res.json({
-          data: cached.data,
-          stale: true,
-          asOf: cached.asOf,
-        });
-      }
-
-      return res.status(502).json({
-        message: 'Partner data unavailable',
-      });
+      if (err.status) return res.status(err.status).json({ message: err.message });
+      console.error(err);
+      res.status(502).json({ message: 'Partner data unavailable' });
     }
   }
+);
+
+// ---------- Take / return materials (WRITES: API key required) ----------
+const takeLimiter = rateLimit({
+  windowMs: 60000,
+  max: 20,
+});
+
+app.use(
+  '/provider-inventory',
+  cors({ origin: FRONTEND_ORIGINS }),
+  requireApiKey,
+  takeLimiter,
+  materialsRoutes
 );
 
 // ---------- Everything below requires an API key ----------
@@ -226,6 +159,11 @@ app.use((err, req, res, next) => {
 });
 
 if (require.main === module) {
+  // Create the materials tables if missing; the server still starts if the DB is briefly unavailable.
+  ensureTables().catch((err) => {
+    console.error('Could not create materials tables:', err.code || err.message);
+  });
+
   app.listen(PORT, (err) => {
     if (err) {
       console.error('Could not start server:', err.code || err.message);
