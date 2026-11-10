@@ -38,7 +38,7 @@ router.post('/', async (req, res) => {
   }
 
   try {
-    const id = `bk_${crypto.randomBytes(16).toString('hex')}`;
+    const id = `bk_${crypto.randomBytes(8).toString('hex')}`;
     await db.query(
       'INSERT INTO bookings (id, worker_id, job_type, location, scheduled_for, requested_by) VALUES (?, ?, ?, ?, ?, ?)',
       [id, workerId, jobType, location, toMysqlDate(scheduledFor), requestedBy]
