@@ -62,3 +62,28 @@ Limitations: both limiters are in memory, so they reset when the server restarts
 - Open CORS policy on the keyed API.
 - The open inventory route can still be called by anyone, up to 30 times per minute from each IP. CORS only restricts other websites in browsers, not scripts or curl. Many different IPs could still use up the partner quota. The alternative of putting the partner key in browser code would be worse, and a production system would put a login in front of this route.
 - The inventory route keeps the last good response in memory for each provider ID it has served, with no size limit. Because anyone can call the route with any positive whole number (30 times per minute per IP), the cache could slowly grow. A production system would cap the number of entries or expire old ones.
+
+## Staff access control (materials in stock)
+
+**Change made:** materials were first shown to everyone on the worker page. Customers have no reason to see stock, so access is now limited to staff, and the server enforces it.
+
+| Check | Finding | Fix / status |
+|---|---|---|
+| Who can see stock | The old read route `GET /provider-inventory/:id` was open to anyone. | Removed. It now requires a signed-in admin or fundi. Customers get `401`. An API key alone does not unlock it. |
+| Authentication | Needed real identities, not one shared key. | Username and password. Passwords are stored as salted scrypt hashes. Sessions are signed tokens (HMAC-SHA256, secret in `AUTH_SECRET`) that expire after 8 hours. |
+| Role checks | Admin and fundi need different powers. | Admin: everything, plus creating accounts and viewing activity. Fundi: view, take, and return only what they took themselves. Every request re-checks the account in the database, so removing a person or changing a role applies immediately. |
+| Password guessing | Login could be brute-forced. | Login is limited to 8 attempts per minute per address. Error text is the same for a wrong password and an unknown username, and unknown usernames take the same time to check. |
+| Key in the browser | Earlier finding: the team API key had to sit in the frontend to take items, where anyone could read it. | Resolved. The browser no longer holds any API key. |
+| Who took an item | The name used to be typed into the page. | The name now comes from the sign-in, so nobody can take items under another person's name. |
+| Input checks | Take and return accept numbers from the client. | `productId` and `quantity` must be whole numbers (quantity 1-100); amounts are checked against live stock inside a database transaction; if Team 11's data is unavailable, taking is refused (`503`). |
+| Tests | | Automated tests cover: no token gives 401, a forged token gives 401, an API key alone gives 401, a fundi gets 403 on admin routes, wrong password and unknown user both give 401, passwords are never stored in plain text. |
+
+**Remove from the earlier findings table:** the row describing `/provider-inventory/:id` as a deliberate open route. It no longer applies.
+
+**Known limitations**
+- Session tokens live in the browser's `sessionStorage`, so a cross-site-scripting flaw in the app could expose them.
+- Tokens are stateless: signing out removes the token from the browser but the token stays valid until it expires. Deleting an account does stop it working at once.
+- There is no password reset or change screen. An admin must delete the account and create a new one.
+- The login attempt limiter is in memory, so it resets when the server restarts.
+- Stock is Team 11's shared inventory (their API ignores the provider ID), so records are kept per product, not per provider.
+- When an admin returns items on someone's behalf, the record shows the admin as the person who returned them.

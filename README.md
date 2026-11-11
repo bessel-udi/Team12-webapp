@@ -114,6 +114,61 @@ Each API key may make **100 requests per minute**. Going over the limit returns 
 
 Wait `retryAfter` seconds before sending more requests. The limit is counted in server memory, so it resets if the server restarts.
 
+## Staff accounts and materials (admin / fundi)
+
+Materials in stock are **not shown to customers**. Only signed-in staff can see or change them, and the server enforces this (it is not just hidden on the page).
+
+| Role | See materials | Take | Return | Create staff, see activity |
+|---|---|---|---|---|
+| Customer (no account) | No | No | No | No |
+| Fundi | Yes | Yes | Only items they took themselves | No |
+| Admin | Yes | Yes | Anyone's (to correct mistakes) | Yes |
+
+Staff sign in with a username and password. The server records **who** took each item from the sign-in, not from anything typed into the page.
+
+### First-time setup
+
+Add these to `server/.env` (see `server/.env.example`):
+
+```env
+AUTH_SECRET=<random 64-character value>
+ADMIN_USERNAME=<your admin username>
+ADMIN_PASSWORD=<at least 8 characters>
+ADMIN_NAME=<display name>
+```
+
+Generate the secret with:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+On the first start the server prints `Created first admin account`. Remove `ADMIN_PASSWORD` from the file afterwards: the account stays in the database. Keep `AUTH_SECRET`. The admin can then add fundi accounts from the staff panel on any worker page (**Staff sign in** link).
+
+### Endpoints
+
+| Method | Endpoint | Who | Purpose |
+|---|---|---|---|
+| POST | `/staff/login` | anyone (8 attempts/minute) | Sign in, returns a session token (valid 8 hours) |
+| POST | `/staff` | admin | Create a fundi or admin account |
+| GET | `/staff/activity` | admin | Latest 30 takes and returns |
+| GET | `/provider-inventory/{id}` | admin, fundi | Materials in stock |
+| POST | `/provider-inventory/{id}/take` | admin, fundi | Take materials |
+| POST | `/provider-inventory/{id}/return` | admin, fundi | Return materials |
+
+```bash
+curl.exe -i -X POST "http://localhost:5000/staff/login" -H "Content-Type: application/json" -d "{\"username\":\"james\",\"password\":\"<your-password>\"}"
+
+curl.exe -i "http://localhost:5000/provider-inventory/15" -H "Authorization: Bearer <your-token>"
+
+curl.exe -i -X POST "http://localhost:5000/provider-inventory/15/take" -H "Authorization: Bearer <your-token>" -H "Content-Type: application/json" -d "{\"productId\":18,\"quantity\":2}"
+```
+
+Responses: `401 {"message":"Please sign in"}` (no or expired token), `403` (signed in but not allowed, for example a fundi calling an admin route), `409` (not enough stock, or returning more than you hold), `503` (live stock unavailable, so nothing can be taken). Quantities must be whole numbers from 1 to 100.
+
+How the numbers work: Team 11's stock is read-only for us, so this app keeps its own record of what staff have taken. **Available** = Team 11's count minus what staff currently hold, and the low-stock level is 10.
+
+
 ## Internal route: provider inventory (no API key)
 
 `GET /provider-inventory/{providerId}` is used by QuickFundi's own website to show the materials a provider has in stock, taken from our upstream partner LiteStock. It is internal: it is not part of the contract for API consumers such as HospitalQ and is not listed in `openapi.yaml`.

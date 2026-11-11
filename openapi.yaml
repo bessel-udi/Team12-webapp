@@ -307,6 +307,238 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
+  /staff/login:
+    post:
+      summary: Staff sign in (admin or fundi)
+      description: Limited to 8 attempts per minute per address.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StaffLoginRequest' }
+      responses:
+        '200':
+          description: Signed in
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffLoginResponse' }
+        '400':
+          description: Username or password missing
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthError' }
+        '401':
+          description: Invalid username or password
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthError' }
+              example: { message: "Invalid username or password" }
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          description: Staff login is not configured on the server
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthError' }
+
+  /staff:
+    post:
+      summary: Create a staff account (admin only)
+      security:
+        - StaffBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StaffCreateRequest' }
+      responses:
+        '201':
+          description: Account created
+        '400':
+          description: Invalid username, name, role or password
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthError' }
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthError' }
+              example: { message: "Please sign in" }
+        '403':
+          description: Signed in, but not an admin
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthError' }
+        '409':
+          description: Username already taken
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthError' }
+
+  /staff/activity:
+    get:
+      summary: Latest takes and returns (admin only)
+      security:
+        - StaffBearer: []
+      responses:
+        '200':
+          description: The 30 most recent changes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ActivityEntry' }
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthError' }
+        '403':
+          description: Signed in, but not an admin
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthError' }
+
+  /provider-inventory/{id}:
+    get:
+      summary: Materials in stock (staff only)
+      description: >
+        Partner stock minus what staff currently hold. Customers cannot see
+        this: a signed-in admin or fundi is required.
+      security:
+        - StaffBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 15
+      responses:
+        '200':
+          description: Current materials
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InventoryResponse' }
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthError' }
+        '403':
+          description: Account not allowed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthError' }
+        '502':
+          description: Partner data unavailable
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthError' }
+
+  /provider-inventory/{id}/take:
+    post:
+      summary: Take materials (staff only)
+      security:
+        - StaffBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 15
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TakeReturnRequest' }
+      responses:
+        '200':
+          description: Taken; returns the updated list
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InventoryResponse' }
+        '400':
+          description: productId and quantity must be whole numbers (quantity 1-100)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthError' }
+        '404':
+          description: No such item
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: Not enough stock left (NOT_ENOUGH_STOCK)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503':
+          description: Live stock unavailable, so nothing can be taken right now
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /provider-inventory/{id}/return:
+    post:
+      summary: Return materials (staff only)
+      description: >
+        A fundi can return only what they took themselves (NOT_YOURS).
+        An admin can return on anyone's behalf.
+      security:
+        - StaffBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 15
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TakeReturnRequest' }
+      responses:
+        '200':
+          description: Returned; returns the updated list
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InventoryResponse' }
+        '400':
+          description: productId and quantity must be whole numbers (quantity 1-100)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Not signed in
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthError' }
+        '404':
+          description: No such item
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: Returning more than is held (NOT_YOURS or RETURN_TOO_MANY)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503':
+          description: Live stock unavailable
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -316,6 +548,14 @@ components:
       description: >
         API key issued privately to each consumer. Send it in the X-API-Key
         header on every request.
+   
+    StaffBearer:
+      type: http
+      scheme: bearer
+      description: >
+        Session token returned by POST /staff/login (valid for 8 hours).
+        Send it as `Authorization: Bearer <token>`. Customers have no token
+        and cannot use these routes.
 
   responses:
     Unauthorized:
@@ -482,3 +722,86 @@ components:
           type: integer
           description: Seconds until the rate-limit window resets
           example: 42
+
+    StaffLoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string, example: "james" }
+        password: { type: string, format: password }
+
+    StaffLoginResponse:
+      type: object
+      required: [token, user]
+      properties:
+        token: { type: string, description: Signed session token }
+        user:
+          type: object
+          properties:
+            name: { type: string, example: "James Otieno" }
+            role: { type: string, enum: [admin, fundi] }
+
+    StaffCreateRequest:
+      type: object
+      required: [username, displayName, role, password]
+      properties:
+        username:
+          type: string
+          description: 3-50 letters, numbers, dots, dashes or underscores
+          example: "james"
+        displayName: { type: string, maxLength: 60, example: "James Otieno" }
+        role: { type: string, enum: [admin, fundi] }
+        password: { type: string, format: password, minLength: 8, maxLength: 100 }
+
+    ActivityEntry:
+      type: object
+      properties:
+        id: { type: integer }
+        product_id: { type: integer }
+        product_name: { type: string, nullable: true, example: "Laptop" }
+        quantity:
+          type: integer
+          description: Positive = taken, negative = returned
+          example: 2
+        who: { type: string, example: "James Otieno" }
+        created_at: { type: string, format: date-time }
+
+    InventoryItem:
+      type: object
+      required: [product_id, name, category, quantity, taken, mine, status]
+      properties:
+        product_id: { type: integer, example: 18 }
+        name: { type: string, example: "Laptop" }
+        category: { type: string, example: "Electronics" }
+        quantity:
+          type: integer
+          description: Left to take (partner stock minus what staff hold)
+          example: 7
+        taken:
+          type: integer
+          description: How many staff hold in total
+          example: 2
+        mine:
+          type: integer
+          description: How many the signed-in person holds
+          example: 2
+        status: { type: string, enum: [in_stock, low_stock, out_of_stock] }
+
+    InventoryResponse:
+      type: object
+      required: [data, stale, asOf]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/InventoryItem' }
+        stale:
+          type: boolean
+          description: True when live partner data was unavailable and a saved copy is shown
+        asOf: { type: string, format: date-time }
+
+    TakeReturnRequest:
+      type: object
+      required: [productId, quantity]
+      properties:
+        productId: { type: integer, example: 18 }
+        quantity: { type: integer, minimum: 1, maximum: 100, example: 2 }
