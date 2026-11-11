@@ -11,7 +11,7 @@ function httpError(status, message, code) {
   return e;
 }
 
-// ---- Create the two tables if they don't exist (runs once at server start) ----
+// ---- Create the tables if they don't exist (runs once at server start) ----
 async function ensureTables() {
   await db.query(
     `CREATE TABLE IF NOT EXISTS material_stock (
@@ -23,11 +23,21 @@ async function ensureTables() {
     `CREATE TABLE IF NOT EXISTS material_log (
        id INT AUTO_INCREMENT PRIMARY KEY,
        product_id INT NOT NULL,
+       product_name VARCHAR(100) NULL,
        quantity INT NOT NULL,
        taken_by VARCHAR(60) NOT NULL,
+       staff_id INT NULL,
        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
      )`
   );
+  // Tables created by an earlier version lack the newer columns: add them, ignoring "already exists".
+  for (const col of ['staff_id INT NULL', 'product_name VARCHAR(100) NULL']) {
+    try {
+      await db.query(`ALTER TABLE material_log ADD COLUMN ${col}`);
+    } catch (err) {
+      if (err.code !== 'ER_DUP_FIELDNAME') throw err;
+    }
+  }
   console.log('Materials tables ready');
 }
 
@@ -75,14 +85,27 @@ async function fetchPartnerItems() {
   }
 }
 
-// ---- Our own ledger of what fundis have taken ----
+// ---- Our own ledger of what staff have taken ----
 async function getTakenMap() {
   try {
     const [rows] = await db.query('SELECT product_id, taken FROM material_stock');
     return new Map(rows.map((r) => [Number(r.product_id), Number(r.taken)]));
   } catch (err) {
-    // Table missing (materials.sql not run yet): keep the read-only card working.
     console.error('material_stock unavailable:', err.code || err.message);
+    return new Map();
+  }
+}
+
+// What THIS person currently holds, per product (their takes minus their returns).
+async function getMineMap(userId) {
+  try {
+    const [rows] = await db.query(
+      'SELECT product_id, SUM(quantity) AS held FROM material_log WHERE staff_id = ? GROUP BY product_id',
+      [userId]
+    );
+    return new Map(rows.map((r) => [Number(r.product_id), Math.max(Number(r.held), 0)]));
+  } catch (err) {
+    console.error('material_log unavailable:', err.code || err.message);
     return new Map();
   }
 }
@@ -93,29 +116,31 @@ function deriveStatus(partnerStatus, available) {
   return 'in_stock';
 }
 
-function buildInventory(items, takenMap) {
+function buildInventory(items, takenMap, mineMap) {
   return items.map((i) => {
-    const taken = takenMap.get(Number(i.product_id)) || 0;
+    const id = Number(i.product_id);
+    const taken = takenMap.get(id) || 0;
     const available = Math.max(i.quantity - taken, 0);
     return {
       product_id: i.product_id,
       name: i.name,
       category: i.category,
       quantity: available, // what is left to take
-      taken, // how many our fundis currently hold
+      taken, // how many staff currently hold, in total
+      mine: mineMap.get(id) || 0, // how many the signed-in person holds
       status: deriveStatus(i.status, available),
     };
   });
 }
 
-async function getInventory() {
+async function getInventory(user) {
   const partner = await fetchPartnerItems();
-  const takenMap = await getTakenMap();
-  return { data: buildInventory(partner.items, takenMap), stale: partner.stale, asOf: partner.asOf };
+  const [takenMap, mineMap] = await Promise.all([getTakenMap(), getMineMap(user.id)]);
+  return { data: buildInventory(partner.items, takenMap, mineMap), stale: partner.stale, asOf: partner.asOf };
 }
 
 // ---- Take / return ----
-async function changeTaken({ action, productId, quantity, takenBy }) {
+async function changeTaken({ action, productId, quantity, user }) {
   const partner = await fetchPartnerItems();
   if (partner.stale) {
     throw httpError(503, 'Live stock is unavailable right now, so items cannot be taken. Try again shortly.', 'STOCK_UNAVAILABLE');
@@ -131,6 +156,18 @@ async function changeTaken({ action, productId, quantity, takenBy }) {
     await conn.query('INSERT IGNORE INTO material_stock (product_id, taken) VALUES (?, 0)', [productId]);
     const [[row]] = await conn.query('SELECT taken FROM material_stock WHERE product_id = ? FOR UPDATE', [productId]);
 
+    // Fundis can only return what they took themselves; admins can correct anyone's.
+    if (action === 'return' && user.role !== 'admin') {
+      const [[mine]] = await conn.query(
+        'SELECT COALESCE(SUM(quantity), 0) AS held FROM material_log WHERE product_id = ? AND staff_id = ?',
+        [productId, user.id]
+      );
+      const held = Math.max(Number(mine.held), 0);
+      if (quantity > held) {
+        throw httpError(409, `You only hold ${held} of "${item.name}", so you can't return ${quantity}`, 'NOT_YOURS');
+      }
+    }
+
     const newTaken = Number(row.taken) + delta;
     if (delta > 0 && newTaken > item.quantity) {
       throw httpError(409, `Only ${Math.max(item.quantity - Number(row.taken), 0)} of "${item.name}" left to take`, 'NOT_ENOUGH_STOCK');
@@ -140,7 +177,10 @@ async function changeTaken({ action, productId, quantity, takenBy }) {
     }
 
     await conn.query('UPDATE material_stock SET taken = ? WHERE product_id = ?', [newTaken, productId]);
-    await conn.query('INSERT INTO material_log (product_id, quantity, taken_by) VALUES (?, ?, ?)', [productId, delta, takenBy]);
+    await conn.query(
+      'INSERT INTO material_log (product_id, product_name, quantity, taken_by, staff_id) VALUES (?, ?, ?, ?, ?)',
+      [productId, item.name.slice(0, 100), delta, user.name, user.id]
+    );
     await conn.commit();
   } catch (err) {
     await conn.rollback();
@@ -149,8 +189,8 @@ async function changeTaken({ action, productId, quantity, takenBy }) {
     conn.release();
   }
 
-  const takenMap = await getTakenMap();
-  return { data: buildInventory(partner.items, takenMap), stale: false, asOf: partner.asOf };
+  const [takenMap, mineMap] = await Promise.all([getTakenMap(), getMineMap(user.id)]);
+  return { data: buildInventory(partner.items, takenMap, mineMap), stale: false, asOf: partner.asOf };
 }
 
 module.exports = { getInventory, changeTaken, ensureTables };

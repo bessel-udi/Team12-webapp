@@ -3,8 +3,10 @@ const cors = require('cors');
 const { monitor, statsHandler } = require('./monitoring');
 require('dotenv').config();
 
-const { getInventory, ensureTables } = require('./inventoryService');
+const { ensureTables } = require('./inventoryService');
+const { requireStaff, ensureStaffTable } = require('./auth');
 const materialsRoutes = require('./routes/materials');
+const staffRoutes = require('./routes/staff');
 
 const app = express();
 app.disable('x-powered-by');
@@ -12,7 +14,7 @@ app.set('trust proxy', 1);
 
 const PORT = process.env.PORT || 5000;
 
-// ---------- Auth ----------
+// ---------- API key auth (for partners and other programs) ----------
 const VALID_KEYS = (process.env.API_KEYS || '').split(',').filter(Boolean);
 console.log(`Loaded ${VALID_KEYS.length} API keys`);
 
@@ -32,7 +34,7 @@ function rateLimit({ windowMs, max }) {
   const hits = new Map();
 
   return (req, res, next) => {
-    const id = req.apiKey || req.ip;
+    const id = req.user ? `user:${req.user.id}` : req.apiKey || req.ip;
     const now = Date.now();
 
     let entry = hits.get(id);
@@ -61,54 +63,24 @@ function rateLimit({ windowMs, max }) {
 app.use(monitor); // FIRST, so rejected requests are logged too
 app.use(express.json());
 
-// Origins allowed to call the inventory routes from a browser
+// Origins allowed to call the staff routes from a browser
 const FRONTEND_ORIGINS = (
   process.env.FRONTEND_ORIGINS || 'http://localhost:5173'
 )
   .split(',')
   .filter(Boolean);
+const staffCors = cors({ origin: FRONTEND_ORIGINS });
 
-// ---------- Public, read-only provider inventory ----------
-const inventoryLimiter = rateLimit({
-  windowMs: 60000,
-  max: 30,
-});
-
-app.get(
-  '/provider-inventory/:id',
-  cors({ origin: FRONTEND_ORIGINS }),
-  inventoryLimiter,
-  async (req, res) => {
-    const id = Number(req.params.id);
-
-    if (!Number.isInteger(id) || id < 1) {
-      return res.status(400).json({
-        message: 'Invalid provider ID',
-      });
-    }
-
-    try {
-      // Partner stock minus what our fundis have taken (see inventoryService.js)
-      res.json(await getInventory());
-    } catch (err) {
-      if (err.status) return res.status(err.status).json({ message: err.message });
-      console.error(err);
-      res.status(502).json({ message: 'Partner data unavailable' });
-    }
-  }
-);
-
-// ---------- Take / return materials (WRITES: API key required) ----------
-const takeLimiter = rateLimit({
-  windowMs: 60000,
-  max: 20,
-});
+// ---------- Staff area: sign-in, then role checks (admin / fundi) ----------
+// Customers never see these. Only a signed-in admin or fundi gets stock data.
+app.use('/staff/login', staffCors, rateLimit({ windowMs: 60000, max: 8 })); // slows password guessing
+app.use('/staff', staffCors, rateLimit({ windowMs: 60000, max: 60 }), staffRoutes);
 
 app.use(
   '/provider-inventory',
-  cors({ origin: FRONTEND_ORIGINS }),
-  requireApiKey,
-  takeLimiter,
+  staffCors,
+  requireStaff(['admin', 'fundi']),
+  rateLimit({ windowMs: 60000, max: 60 }),
   materialsRoutes
 );
 
@@ -159,10 +131,9 @@ app.use((err, req, res, next) => {
 });
 
 if (require.main === module) {
-  // Create the materials tables if missing; the server still starts if the DB is briefly unavailable.
-  ensureTables().catch((err) => {
-    console.error('Could not create materials tables:', err.code || err.message);
-  });
+  // Create the tables (and the first admin, if ADMIN_* is set). The server still starts if the DB is briefly down.
+  ensureTables().catch((err) => console.error('Could not create materials tables:', err.code || err.message));
+  ensureStaffTable().catch((err) => console.error('Could not create staff table:', err.code || err.message));
 
   app.listen(PORT, (err) => {
     if (err) {

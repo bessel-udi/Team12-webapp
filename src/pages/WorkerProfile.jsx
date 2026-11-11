@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import ProviderInventory from '../components/ProviderInventory';
+import StaffAccess from '../components/StaffAccess';
 
 export default function WorkerProfile() {
   const navigate = useNavigate();
@@ -166,7 +166,7 @@ export default function WorkerProfile() {
       
                {/* Provider stock, fetched from the LiteStock partner API via our server */}
          <div style={styles.section}>
-           <ProviderInventory providerId={15} />
+           <StaffAccess providerId={15} />
          </div>
          
       {/* 3. Ratings & Reviews Display Section */}
