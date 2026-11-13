@@ -100,11 +100,14 @@ app.get('/', (req, res) => {
   res.send('QuickFundi API is running');
 });
 
-const workerRoutes = require('./routes/workers');
-const bookingRoutes = require('./routes/bookings');
+// ---------- Versioned API ----------
+// Order matters: specific versions first, the catch-all '/' last.
+const v1 = require('./v1');
+const v2 = require('./v2');
 
-app.use('/workers', workerRoutes);
-app.use('/bookings', bookingRoutes);
+app.use('/v2', v2);   // the new version
+app.use('/v1', v1);   // the old version, still running
+app.use('/', v1);     // old URLs with no version keep working
 
 app.use((req, res) => {
   res.status(404).json({
