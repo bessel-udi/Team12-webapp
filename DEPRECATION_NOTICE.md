@@ -48,7 +48,7 @@ Wrapping the list lets us add paging (for example `page` and `limit`) later with
 ## Timeline
 
 - **Today (13 November 2026):** v2 is live. v1 still works and now sends `Deprecation`, `Sunset` and `Link` headers on every response.
-- **14 November 2026:** v1 stops working.
+- **19 November 2026:** v1 stops working.
 
 ## Questions
 

@@ -1,15 +1,16 @@
 ﻿openapi: 3.0.0
 info:
   title: QuickFundi API
-  version: 1.0.0
+  version: 2.0.0
   description: >
     API exposed by Team 12 (QuickFundi) for Team 13 (HospitalQ) to search
     fundis, view their profiles, and manage facility-maintenance bookings.
 
 paths:
-  /workers:
+    /workers:
     get:
-      summary: Search worker profiles by job type and location
+      deprecated: true
+      summary: Search worker profiles by job type and location (v1, sunset 19 Nov 2026, use /v2/workers)
       parameters:
         - name: jobType
           in: query
@@ -49,6 +50,57 @@ paths:
               example:
                 code: "INVALID_PARAMS"
                 message: "jobType must be one of: electrician, plumber, handyman"
+      /v2/workers:
+    get:
+      summary: Search worker profiles (v2). Same as /workers, but the list is wrapped in an object.
+      parameters:
+        - name: jobType
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [electrician, plumber, handyman]
+          example: electrician
+        - name: location
+          in: query
+          required: false
+          schema:
+            type: string
+          example: "Nairobi, Upper Hill"
+      responses:
+        '200':
+          description: Workers matching the search, wrapped as { data, count }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, count]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WorkerSummary'
+                  count:
+                    type: integer
+              example:
+                data:
+                  - id: "wk_1042"
+                    name: "James Otieno"
+                    jobType: "electrician"
+                    location: "Nairobi, Upper Hill"
+                    rating: 4.8
+                    ratePerHour: 800
+                count: 1
+        '400':
+          description: Missing or invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
   /workers/{id}:
     get:

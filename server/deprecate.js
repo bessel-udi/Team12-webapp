@@ -1,6 +1,6 @@
 // Adds the standard "this is going away" headers to a response.
 // Change SUNSET_V1 to the day before Demo Day (or the date you promise in DEPRECATION_NOTICE.md).
-const SUNSET_V1 = '2026-11-14';
+const SUNSET_V1 = '2026-11-19';
 
 function deprecated({ sunset, successor }) {
   return (req, res, next) => {

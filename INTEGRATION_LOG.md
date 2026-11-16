@@ -3,15 +3,14 @@
 **Team:** Team 12 (QuickFundi)
 **Upstream partner:** Team 11, LiteStock API (`https://quickfundi-litestock-api.onrender.com`)
 **Downstream partner:** Team 13, HospitalQ
-**Date:** first written 2026-10-28, updated 2026-11-05
-
+**Date:** **Date:** first written 2026-10-28, updated 2026-11-15
 ## Summary
 
 Feature: a "Materials in stock" panel on the worker profile page (`/worker/:id`).
 
 How it works: the React page asks our own server (`GET /provider-inventory/:id`). Our server calls LiteStock `GET /api/inventory` with the partner key from the environment, checks the response shape, and returns `{ data, stale, asOf }`. Each item in `data` has `product_id`, `name`, `category`, `quantity` and `status`. The partner key never reaches browser code. Each partner call has a 5 second timeout and up to 3 attempts, and the last successful response is kept in memory and returned with `stale: true` if LiteStock cannot be reached.
 
-Status: integrated against LiteStock's real API. Verified on our own machine and on our deployed server (Railway): the route returns LiteStock's 7 inventory items with `stale: false`. Until 2026-11-04 everything was tested against a stand-in server (`server/mock-partner.js`) because their server was not reachable.
+Status: integrated against LiteStock's real API. Verified on our own machine and on our deployed server (Railway): the route returns LiteStock's 45 inventory items with `stale: false`. Until 2026-11-04 everything was tested against a stand-in server (`server/mock-partner.js`) because their server was not reachable.
 
 ## Bug and surprise log
 
@@ -27,6 +26,7 @@ Status: integrated against LiteStock's real API. Verified on our own machine and
 | 8 | With the key fixed, the route still returned 502. The log showed `attempt 1 failed`, `attempt 2 failed`, then `Partner call failed: timeout`. | The timeout was 1500 ms, but the partner takes about 1.4 seconds to answer from our machine (measured 1.42 s with curl), so all three attempts missed it. | Raised `timeoutMs` from 1500 to 5000. After that the route returned 200 with the full inventory. | Our configuration. Fixed by us. |
 | 9 | Starting the server printed `Could not start server: EADDRINUSE` and nodemon reported a crash. | An older copy of our own server was still running and holding port 5000. Earlier versions of our startup code printed "Server running" even when the port was taken, which hid this. | The startup code now reports the error and exits. Stopped all old Node processes and started once. | Our code. Fixed by us. |
 | 10 | The first call to the deployed server returned `502 Partner data unavailable`. A call a few minutes later returned 200 with live data. | Most likely LiteStock's service sleeping on its free hosting plan: the first request times out while it wakes up, and a freshly deployed server has no cached copy to fall back on. We did not capture the log line, so this is not confirmed. | Wake the partner (one call) before a demo. The cached copy covers later failures. | Partner's hosting limit plus our empty cache. Worked around by us. |
+| 11 | Week 13: Team 11's deprecation notice says to use `/api/v2`, but their live server returns 404. | Called `GET /api/v2/inventory`, `GET /api/v1/inventory` and `GET /migration` on `https://quickfundi-litestock-api.onrender.com` on 2026-11-15: all `Cannot GET ... 404`. Their `/openapi.yaml` says `version: 2.0.0` but still documents only `/api/inventory` with `{ count, inventory }` and `product_id`. The notice also shows `id` in its example but `productId` in its migration text, and shows `products`, which their real v1 does not return (it returns `inventory`). | Wrote `server/partner.js` with a v1 and a v2 parser and a `PARTNER_VERSION` setting (default v1), with unit tests for both shapes. Production stays on v1 (still `stale: false`). Asked Team 11 for the real v2 URL and one real v2 response. | Partner's notice did not match their deployed server. Parser and switch written by us. |
 
 ## Open questions for the partner
 
@@ -37,11 +37,11 @@ Status: integrated against LiteStock's real API. Verified on our own machine and
 
 | Test | Result |
 |---|---|
-| Direct call to the real partner with our key (`curl`, 2026-11-04) | 200, 7 inventory items, about 1.4 seconds. |
+| Direct call to the real partner with our key (`curl`, 2026-11-04) | 200, 45 inventory items, about 1.4 seconds. |
 | Our route before the key fix | The partner returned 401, because no key was sent (bug 5). |
-| Our route on our own machine after the fixes | 200 with `data` (7 items), `stale: false` and `asOf`. `stock_quantity` appears as `quantity`. |
+| Our route on our own machine after the fixes | 200 with `data` (45 items), `stale: false` and `asOf`. `stock_quantity` appears as `quantity`. |
 | Our deployed route (Railway), first call after a quiet period | 502 (bug 10). |
-| Our deployed route a few minutes later | 200 with the same 7 items, `stale: false`. |
+| Our deployed route a few minutes later | 200 with the same 45 items, `stale: false`. |
 | Against the stand-in (2026-10-28): partner stopped | The panel showed a friendly "inventory is unavailable" message and the rest of the page still worked. Our server stayed up and logged `partner call failed: ECONNREFUSED`. |
 | Against the stand-in: partner restarted | Data came back after a page reload, with no code change. |
 

@@ -15,6 +15,36 @@ test('v1 parser fails loudly on a different shape, not quietly', () => {
   expect(() => versions.v1.parse({ inventory: [{ name: 'x' }] })).toThrow('unexpected v1 shape');
 });
 
-// After you read Team 11's notice: write v2.parse in partner.js, then replace this line with real tests
-// (same pattern: a sample v2 body in, the same `wanted` shape out, and the wrong parser throws).
-test.todo('v2 parser matches the example in the partner notice');
+const v2Body = {
+  count: 1,
+  data: [{ productId: 18, name: 'Laptop', category: 'Electronics', stockQuantity: 9, status: 'low_stock' }],
+};
+
+test('v2 parser gives the app the same shape as v1', () => {
+  expect(versions.v2.parse(v2Body)).toEqual(wanted);
+});
+
+test('v2 parser accepts `id` as well as `productId` (the notice shows both)', () => {
+  const body = { count: 1, data: [{ id: 18, name: 'Laptop', category: 'Electronics', stockQuantity: 9, status: 'low_stock' }] };
+  expect(versions.v2.parse(body)).toEqual(wanted);
+});
+
+test('v2 parser fails loudly on a different shape, not quietly', () => {
+  expect(() => versions.v2.parse(v1Body)).toThrow('unexpected v2 shape');
+  expect(() => versions.v2.parse({ data: [{ name: 'x', stock_quantity: 3, productId: 1 }] })).toThrow('unexpected v2 shape');
+});
+
+test('the wrong parser fails on each version body', () => {
+  expect(() => versions.v1.parse(v2Body)).toThrow('unexpected v1 shape');
+});
+
+test('PARTNER_VERSION picks the parser; default is v1; unknown value throws', () => {
+  const { current } = require('./partner');
+  delete process.env.PARTNER_VERSION;
+  expect(current().name).toBe('v1');
+  process.env.PARTNER_VERSION = 'v2';
+  expect(current().name).toBe('v2');
+  process.env.PARTNER_VERSION = 'v9';
+  expect(() => current()).toThrow('Unknown PARTNER_VERSION');
+  delete process.env.PARTNER_VERSION;
+});

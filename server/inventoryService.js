@@ -1,5 +1,6 @@
 const db = require('./db');
 const { fetchWithRetry } = require('./resilientFetch');
+const partner = require('./partner');
 
 const LOW_STOCK_AT = 10;
 let lastGood = null; // { items, asOf } from the last successful partner call
@@ -44,8 +45,9 @@ async function ensureTables() {
 // ---- Partner (Team 11) stock: read-only ----
 async function fetchPartnerItems() {
   try {
+    const version = partner.current();
     const r = await fetchWithRetry(
-      `${process.env.PARTNER_URL}/api/inventory`,
+      `${process.env.PARTNER_URL}${version.path}`,
       { headers: { 'X-API-Key': process.env.PARTNER_API_KEY } },
       { timeoutMs: 5000, retries: 2, delayMs: 200 }
     );
@@ -54,26 +56,14 @@ async function fetchPartnerItems() {
     if (!r.ok) throw new Error(`Partner returned ${r.status}`);
 
     const data = await r.json();
-    const valid =
-      Array.isArray(data.inventory) &&
-      data.inventory.every(
-        (i) =>
-          typeof i.name === 'string' &&
-          Number.isFinite(i.stock_quantity) &&
-          typeof i.status === 'string'
-      );
-    if (!valid) {
-      console.error('unexpected partner response shape, keys:', Object.keys(data));
+    let items;
+    try {
+      items = version.parse(data);
+    } catch (e) {
+      console.error(`${e.message}, keys:`, Object.keys(data || {}));
       throw httpError(502, 'Partner data unavailable');
     }
 
-    const items = data.inventory.map((i) => ({
-      product_id: i.product_id,
-      name: i.name,
-      category: i.category,
-      quantity: i.stock_quantity,
-      status: i.status,
-    }));
     lastGood = { items, asOf: new Date().toISOString() };
     return { items, asOf: lastGood.asOf, stale: false };
   } catch (err) {
