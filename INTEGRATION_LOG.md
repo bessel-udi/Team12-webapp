@@ -3,14 +3,15 @@
 **Team:** Team 12 (QuickFundi)
 **Upstream partner:** Team 11, LiteStock API (`https://quickfundi-litestock-api.onrender.com`)
 **Downstream partner:** Team 13, HospitalQ
-**Date:** **Date:** first written 2026-10-28, updated 2026-11-15
+**Date:** first written 2026-10-28, updated 2026-11-16
+
 ## Summary
 
 Feature: a "Materials in stock" panel on the worker profile page (`/worker/:id`).
 
 How it works: the React page asks our own server (`GET /provider-inventory/:id`). Our server calls LiteStock `GET /api/inventory` with the partner key from the environment, checks the response shape, and returns `{ data, stale, asOf }`. Each item in `data` has `product_id`, `name`, `category`, `quantity` and `status`. The partner key never reaches browser code. Each partner call has a 5 second timeout and up to 3 attempts, and the last successful response is kept in memory and returned with `stale: true` if LiteStock cannot be reached.
 
-Status: integrated against LiteStock's real API. Verified on our own machine and on our deployed server (Railway): the route returns LiteStock's 45 inventory items with `stale: false`. Until 2026-11-04 everything was tested against a stand-in server (`server/mock-partner.js`) because their server was not reachable.
+Status: integrated against LiteStock's real API. Verified on our own machine and on our deployed server (Railway): the route returned LiteStock's 7 inventory items with `stale: false` (on 2026-11-16 the same route returned 45 items, `stale: false`, so Team 11 has added data since). Until 2026-11-04 everything was tested against a stand-in server (`server/mock-partner.js`) because their server was not reachable.
 
 ## Bug and surprise log
 
@@ -27,6 +28,7 @@ Status: integrated against LiteStock's real API. Verified on our own machine and
 | 9 | Starting the server printed `Could not start server: EADDRINUSE` and nodemon reported a crash. | An older copy of our own server was still running and holding port 5000. Earlier versions of our startup code printed "Server running" even when the port was taken, which hid this. | The startup code now reports the error and exits. Stopped all old Node processes and started once. | Our code. Fixed by us. |
 | 10 | The first call to the deployed server returned `502 Partner data unavailable`. A call a few minutes later returned 200 with live data. | Most likely LiteStock's service sleeping on its free hosting plan: the first request times out while it wakes up, and a freshly deployed server has no cached copy to fall back on. We did not capture the log line, so this is not confirmed. | Wake the partner (one call) before a demo. The cached copy covers later failures. | Partner's hosting limit plus our empty cache. Worked around by us. |
 | 11 | Week 13: Team 11's deprecation notice says to use `/api/v2`, but their live server returns 404. | Called `GET /api/v2/inventory`, `GET /api/v1/inventory` and `GET /migration` on `https://quickfundi-litestock-api.onrender.com` on 2026-11-15: all `Cannot GET ... 404`. Their `/openapi.yaml` says `version: 2.0.0` but still documents only `/api/inventory` with `{ count, inventory }` and `product_id`. The notice also shows `id` in its example but `productId` in its migration text, and shows `products`, which their real v1 does not return (it returns `inventory`). | Wrote `server/partner.js` with a v1 and a v2 parser and a `PARTNER_VERSION` setting (default v1), with unit tests for both shapes. Production stays on v1 (still `stale: false`). Asked Team 11 for the real v2 URL and one real v2 response. | Partner's notice did not match their deployed server. Parser and switch written by us. |
+| 12 | 2026-11-15: Team 13 (Claire) reported that every path on our deployed URL returned `404 Application not found`. Our own check confirmed it (`x-railway-fallback: true`). | Our Railway free trial ended, so Railway no longer served the API or its MySQL database. It was not a code error: the server starts and passes its tests locally. | Installed MySQL locally (XAMPP), recreated the data with `setup-database.js` (schema + seed), ran the API on a laptop and exposed it through a Cloudflare tunnel. Everything was retested: 60 of 60 automated tests pass, `/v2/workers` returns `{ data, count }`, v1 sends the Deprecation and Sunset headers, and the staff route reads LiteStock with `stale: false`. Sent Team 13 the new base URL. | Our hosting account (trial limit). Fixed by us. Data created only in the Railway database (extra bookings, staff accounts) was not recovered. |
 
 ## Open questions for the partner
 
@@ -37,11 +39,11 @@ Status: integrated against LiteStock's real API. Verified on our own machine and
 
 | Test | Result |
 |---|---|
-| Direct call to the real partner with our key (`curl`, 2026-11-04) | 200, 45 inventory items, about 1.4 seconds. |
+| Direct call to the real partner with our key (`curl`, 2026-11-04) | 200, 7 inventory items, about 1.4 seconds. |
 | Our route before the key fix | The partner returned 401, because no key was sent (bug 5). |
-| Our route on our own machine after the fixes | 200 with `data` (45 items), `stale: false` and `asOf`. `stock_quantity` appears as `quantity`. |
+| Our route on our own machine after the fixes | 200 with `data` (7 items), `stale: false` and `asOf`. `stock_quantity` appears as `quantity`. |
 | Our deployed route (Railway), first call after a quiet period | 502 (bug 10). |
-| Our deployed route a few minutes later | 200 with the same 45 items, `stale: false`. |
+| Our deployed route a few minutes later | 200 with the same 7 items, `stale: false`. |
 | Against the stand-in (2026-10-28): partner stopped | The panel showed a friendly "inventory is unavailable" message and the rest of the page still worked. Our server stayed up and logged `partner call failed: ECONNREFUSED`. |
 | Against the stand-in: partner restarted | Data came back after a page reload, with no code change. |
 
@@ -51,8 +53,12 @@ Not yet tested against the real partner: a wrong key, an unknown provider id, an
 
 Team 13 (HospitalQ) calls our API, which requires an `X-API-Key` header and allows 100 requests per minute per key.
 
-[Write here what actually happened with Team 13: when they received their key, what they called, and any 401, 404 or 429 responses or bug reports. Delete this line when done.]
+**Week 13 (versioning).** We added `/v2/workers`, which returns `{ "data": [...], "count": N }` instead of a bare list. v1 and the old unversioned URLs still work and send `Deprecation`, `Sunset` and `Link` headers. v1 sunset date: 19 November 2026. We sent Team 13 the notice (copy in `DEPRECATION_NOTICE.md`) on 2026-11-15. The same day Claire from Team 13 confirmed that they had received it; their teammate who handles versioning had not replied yet, so Team 13 had not confirmed a migration. v1 stays running until after Demo Day.
+
+**Outage (bug 12).** On 2026-11-15 Claire reported `404 Application not found` on our deployed URL. Our Railway trial had ended. We moved the API to a laptop behind a tunnel and sent her the new base URL.
+
+Earlier weeks: [add one or two real lines: when Team 13 got their key, what they called, any 401, 404 or 429 or bug reports. Delete this line when done.]
 
 ## Collaboration
 
-When we asked our upstream partner for their base URL, the link they first gave us did not work. They later gave us the working URL, which is how we moved from the stand-in to their real API.
+When we asked our upstream partner for their base URL, the link they first gave us did not work. They later gave us the working URL, which is how we moved from the stand-in to their real API. In Week 13 their deprecation notice named a v2 path (`/api/v2/...`) that their live server did not serve (404), so we could not finish the move to their v2 and asked them for the real URL.

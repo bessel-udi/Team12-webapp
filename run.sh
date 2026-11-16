@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Starts the QuickFundi API from a fresh clone.
+# Starts the QuickFundi API from a fresh clone. Run with bash (Git Bash or WSL on Windows).
 # Needs: Node.js 20+, and a server/.env file (copy server/.env.example and fill it in).
 set -e
 cd "$(dirname "$0")/server"
@@ -9,6 +9,8 @@ if [ ! -f .env ]; then
   exit 1
 fi
 
+PORT_IN_ENV=$(grep -E '^PORT=' .env | cut -d= -f2 | tr -d '\r')
+
 npm install
-echo "Starting API on http://localhost:${PORT:-5000}"
+echo "Starting API on http://localhost:${PORT_IN_ENV:-5000}"
 npm start
